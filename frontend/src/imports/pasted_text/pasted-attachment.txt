@@ -1,0 +1,1762 @@
+# WORKFLOW — MASTER FULL FUNCTIONALITY & INTERACTION PROMPT
+
+## CRITICAL REQUIREMENT
+
+Upgrade the existing WorkFlow frontend from a visual prototype into a **fully interactive frontend application**.
+
+The current UI contains many buttons, dropdowns, filters, tabs, menus, cards, forms, navigation items, and actions.
+
+### ABSOLUTE RULE
+
+**NO VISIBLE INTERACTIVE ELEMENT MAY BE NON-FUNCTIONAL.**
+
+If a button, icon, dropdown, menu, tab, card, link, form, filter, search field, checkbox, switch, table action, Kanban action, or navigation item is displayed to the user, it must perform a meaningful action when clicked or interacted with.
+
+Do NOT leave:
+
+* Dead buttons
+* Dead links
+* Fake dropdowns
+* Fake search
+* Fake filters
+* Fake tabs
+* Fake modals
+* Fake notifications
+* Fake CRUD actions
+* Buttons that do nothing
+* "Coming soon" placeholders
+* Console-only actions
+* UI that changes visually but does not update application state
+
+The application should behave like a **real frontend product**, even though it uses mock/local data instead of a backend.
+
+---
+
+# 1. IMPORTANT ARCHITECTURE RULE
+
+This is still a:
+
+**React + JavaScript + JSX frontend**
+
+Use:
+
+* React
+* JavaScript ES6+
+* JSX
+* React Router
+* Zustand
+* TanStack Query where appropriate
+* React Hook Form
+* Zod
+* Tailwind CSS
+* Lucide React
+
+DO NOT use TypeScript.
+
+No:
+
+`.ts`
+
+`.tsx`
+
+TypeScript interfaces
+
+Type annotations
+
+Enums
+
+---
+
+# 2. MOCK BACKEND BEHAVIOR
+
+Because there is no backend yet, create a realistic frontend data layer.
+
+Use:
+
+```text
+src/
+├── mock/
+├── services/
+├── store/
+├── hooks/
+└── utils/
+```
+
+Create mock service functions that behave like asynchronous API calls.
+
+For example:
+
+```javascript
+getProjects()
+createProject()
+updateProject()
+deleteProject()
+
+getTasks()
+createTask()
+updateTask()
+deleteTask()
+
+getTeamMembers()
+inviteMember()
+updateMember()
+removeMember()
+
+getNotifications()
+markNotificationAsRead()
+markAllNotificationsAsRead()
+```
+
+Use realistic loading states.
+
+Use realistic success/error states.
+
+The UI must behave as if it is communicating with a backend.
+
+---
+
+# 3. GLOBAL NAVIGATION MUST WORK
+
+Every sidebar item must navigate to its correct route.
+
+### Main
+
+Overview
+
+→ `/dashboard`
+
+Projects
+
+→ `/projects`
+
+Tasks
+
+→ `/tasks`
+
+Calendar
+
+→ `/calendar`
+
+Team
+
+→ `/team`
+
+Analytics
+
+→ `/analytics`
+
+### Workspace
+
+My Tasks
+
+→ filtered task view
+
+Favorites
+
+→ favorites view
+
+Recent
+
+→ recent items
+
+### Bottom
+
+Help & Support
+
+→ support page/modal
+
+Settings
+
+→ `/settings`
+
+Profile
+
+→ profile/settings
+
+Do not create navigation items that lead nowhere.
+
+---
+
+# 4. WORKSPACE SWITCHER
+
+The workspace selector must open a dropdown.
+
+Example:
+
+```text
+Acme Technologies
+Business workspace
+```
+
+Click it.
+
+Open:
+
+```text
+Acme Technologies
+Business workspace
+
+────────────────
+
+Acme Technologies
+Startup Team
+Client Projects
+
+────────────────
+
++ Create workspace
+Manage workspaces
+```
+
+Selecting another workspace must update the visible workspace name.
+
+The selected workspace must persist in frontend state.
+
+---
+
+# 5. GLOBAL SEARCH MUST WORK
+
+Search field:
+
+```text
+Search projects, tasks, people...
+```
+
+Clicking search should open the command/search interface.
+
+Keyboard:
+
+`⌘ K`
+
+and:
+
+`Ctrl K`
+
+must work.
+
+Search across:
+
+* Projects
+* Tasks
+* Team members
+* Recent items
+
+Example:
+
+Search:
+
+`website`
+
+Results:
+
+```text
+Projects
+Website Redesign
+
+Tasks
+WF-124 Redesign authentication screen
+
+People
+Sarah Patel
+```
+
+Clicking a result must navigate/open the corresponding item.
+
+### Search states
+
+Implement:
+
+* Empty
+* Typing
+* Loading
+* Results
+* No results
+
+No results:
+
+**No results found**
+
+with useful guidance.
+
+---
+
+# 6. CREATE BUTTON MUST WORK
+
+Global:
+
+`+ Create`
+
+must open a menu.
+
+Options:
+
+```text
+Create task
+Create project
+Invite member
+Create workspace
+```
+
+Every option must work.
+
+### Create Task
+
+Open task modal.
+
+Fields:
+
+* Title
+* Description
+* Project
+* Assignee
+* Status
+* Priority
+* Due date
+* Labels
+
+Submit.
+
+The new task must immediately appear in:
+
+* Tasks page
+* Project task list
+* Kanban board
+* My Tasks if assigned to current user
+* Dashboard metrics where appropriate
+
+---
+
+# 7. CREATE PROJECT MUST WORK
+
+Click:
+
+`Create Project`
+
+Open modal.
+
+Fields:
+
+* Project name
+* Description
+* Project key
+* Status
+* Lead
+* Start date
+* Due date
+
+Submit.
+
+Show:
+
+**Project created successfully**
+
+The project must appear immediately in the Projects page.
+
+Navigate to the newly created project.
+
+---
+
+# 8. PROJECT CARDS MUST WORK
+
+Clicking a project card must navigate to:
+
+```text
+/projects/:projectId
+```
+
+Project details must display actual project data.
+
+Actions:
+
+* Edit
+* Delete
+* Archive
+* Favorite
+* Share
+
+must all work.
+
+---
+
+# 9. EDIT PROJECT MUST WORK
+
+Click:
+
+`Edit project`
+
+Open modal.
+
+Allow changing:
+
+* Name
+* Description
+* Status
+* Lead
+* Dates
+
+Save.
+
+Update all visible references to that project.
+
+---
+
+# 10. DELETE PROJECT MUST WORK
+
+Click:
+
+`Delete project`
+
+Open confirmation modal.
+
+Example:
+
+```text
+Delete Website Redesign?
+
+This will remove the project and its associated frontend mock data.
+
+Cancel
+Delete project
+```
+
+Require confirmation.
+
+After deletion:
+
+* Remove project
+* Remove/handle associated tasks
+* Update project lists
+* Navigate back to Projects
+
+Show toast:
+
+**Project deleted successfully**
+
+---
+
+# 11. FAVORITE PROJECTS MUST WORK
+
+Click star/favorite.
+
+Toggle:
+
+```text
+Favorite
+Unfavorite
+```
+
+Favorite projects should appear under:
+
+**Favorites**
+
+Persist in Zustand/localStorage.
+
+---
+
+# 12. PROJECT TABS MUST WORK
+
+Project page tabs:
+
+* Overview
+* Board
+* List
+* Timeline
+* Files
+* Activity
+
+Each tab must actually render different content.
+
+Do NOT make tabs that only change the active underline.
+
+---
+
+# 13. KANBAN BOARD MUST WORK
+
+Columns:
+
+* Backlog
+* Todo
+* In Progress
+* In Review
+* Done
+
+Task cards must be interactive.
+
+Click task:
+
+→ Open task drawer.
+
+Move task:
+
+→ Update task status.
+
+If drag-and-drop is implemented, dropping a task into another column must update its status.
+
+If native drag-and-drop is not available, provide an equivalent status-change interaction.
+
+The UI must immediately update.
+
+---
+
+# 14. TASK CARD ACTIONS
+
+Task cards should support:
+
+* Open
+* Edit
+* Assign
+* Change status
+* Change priority
+* Add label
+* Delete
+* Duplicate
+
+Use a contextual menu.
+
+Every action must work.
+
+---
+
+# 15. TASK DRAWER MUST BE FULLY FUNCTIONAL
+
+Clicking a task opens the drawer.
+
+Drawer contains:
+
+* Task title
+* Description
+* Status
+* Priority
+* Assignee
+* Due date
+* Labels
+* Project
+* Checklist
+* Comments
+* Activity
+
+Every field should be editable.
+
+Example:
+
+Click status:
+
+```text
+Backlog
+Todo
+In Progress
+In Review
+Done
+```
+
+Selecting a new status updates the task.
+
+---
+
+# 16. TASK COMMENTS MUST WORK
+
+Comment input:
+
+```text
+Write a comment...
+```
+
+Click:
+
+`Send`
+
+must add the comment to the task.
+
+Display:
+
+* Avatar
+* Name
+* Comment
+* Timestamp
+
+Support:
+
+* Add comment
+* Delete own mock comment
+* Edit own mock comment if desired
+
+---
+
+# 17. TASK CHECKLIST MUST WORK
+
+Example:
+
+```text
+☐ Authentication form
+☑ Password validation
+☐ Error states
+☐ Mobile layout
+```
+
+Users must be able to:
+
+* Check item
+* Uncheck item
+* Add item
+* Delete item
+
+Progress should update automatically.
+
+Example:
+
+`2 / 4 completed`
+
+---
+
+# 18. TASK PRIORITY MUST WORK
+
+Priority options:
+
+* Low
+* Medium
+* High
+* Urgent
+
+Selecting priority must immediately update:
+
+* Task drawer
+* Task card
+* Tasks table
+* Filters
+
+Use semantic colors consistently.
+
+---
+
+# 19. TASK ASSIGNMENT MUST WORK
+
+Click assignee.
+
+Open member selector.
+
+Selecting a member updates the task.
+
+The task must appear in that member's relevant task view.
+
+---
+
+# 20. TASK DUE DATE MUST WORK
+
+Date picker must allow selecting a date.
+
+Display:
+
+* Today
+* Tomorrow
+* Specific date
+* Overdue state
+
+Overdue tasks should be visually identifiable.
+
+---
+
+# 21. TASK DELETE MUST WORK
+
+Delete task:
+
+1. Open confirmation
+2. Confirm
+3. Remove task
+4. Update all task lists
+5. Update project counts
+6. Update dashboard counts where applicable
+7. Show success toast
+
+---
+
+# 22. TASK DUPLICATION MUST WORK
+
+Duplicate task.
+
+Create:
+
+```text
+Copy of [Task Name]
+```
+
+Keep relevant properties.
+
+Add new task to the same project.
+
+---
+
+# 23. TASKS PAGE MUST BE FULLY FUNCTIONAL
+
+Filters:
+
+* Search
+* Status
+* Priority
+* Assignee
+* Project
+* Due date
+
+Every filter must actually filter the displayed tasks.
+
+Multiple filters must work together.
+
+Example:
+
+```text
+Status = In Progress
+Priority = High
+Assignee = Alex
+```
+
+must show only matching tasks.
+
+---
+
+# 24. TASK SORTING MUST WORK
+
+Allow sorting by:
+
+* Due date
+* Priority
+* Created date
+* Updated date
+* Status
+* Task name
+
+Ascending/descending must work.
+
+---
+
+# 25. TASK BULK ACTIONS MUST WORK
+
+Allow selecting multiple tasks.
+
+Bulk actions:
+
+* Change status
+* Change priority
+* Assign
+* Delete
+
+Example:
+
+```text
+3 tasks selected
+
+Change status
+Assign
+Delete
+```
+
+All actions must update the data.
+
+---
+
+# 26. TASK PAGINATION MUST WORK
+
+If mock task data exceeds page size:
+
+* Previous
+* Next
+* Page number
+
+must work.
+
+Do not create pagination controls that are decorative.
+
+---
+
+# 27. CALENDAR MUST WORK
+
+Calendar controls:
+
+* Previous
+* Next
+* Today
+
+must change the displayed date.
+
+Views:
+
+* Month
+* Week
+* Day
+
+must actually change layout.
+
+Tasks with due dates should appear on the calendar.
+
+Clicking a calendar task opens its task drawer.
+
+---
+
+# 28. CALENDAR CREATE EVENT MUST WORK
+
+Create event.
+
+Fields:
+
+* Title
+* Date
+* Time
+* Project
+* Participants
+
+Save.
+
+Event appears on calendar.
+
+---
+
+# 29. TEAM PAGE MUST WORK
+
+Team search must filter members.
+
+Filters:
+
+* Role
+* Status
+
+must work.
+
+Member actions:
+
+* View
+* Edit
+* Change role
+* Remove
+
+must work.
+
+---
+
+# 30. INVITE MEMBER MUST WORK
+
+Click:
+
+`Invite member`
+
+Open modal.
+
+Fields:
+
+Email
+
+Role
+
+Project access
+
+Submit.
+
+Show:
+
+**Invitation sent**
+
+Add invited member to mock pending members.
+
+---
+
+# 31. TEAM MEMBER EDITING MUST WORK
+
+Allow changing:
+
+* Name
+* Role
+* Status
+* Project access
+
+Save updates the UI.
+
+---
+
+# 32. REMOVE MEMBER MUST WORK
+
+Confirmation required.
+
+After confirmation:
+
+* Remove member
+* Update team count
+* Update task assignment where necessary
+
+Show toast.
+
+---
+
+# 33. ANALYTICS FILTERS MUST WORK
+
+Analytics date range:
+
+* Last 7 days
+* Last 30 days
+* Last 90 days
+* This year
+
+Selecting a range must update displayed mock analytics data.
+
+Chart filters must work.
+
+Tooltips must work.
+
+---
+
+# 34. DASHBOARD DATE FILTER MUST WORK
+
+The dashboard:
+
+`Last 30 days`
+
+dropdown must contain:
+
+* Last 7 days
+* Last 30 days
+* Last 90 days
+* This year
+
+Changing it should update dashboard chart/mock metrics.
+
+---
+
+# 35. NOTIFICATIONS MUST WORK
+
+Notification bell opens notification panel.
+
+Each notification can be:
+
+* Opened
+* Marked as read
+* Marked unread
+
+Button:
+
+`Mark all as read`
+
+must work.
+
+Unread badge count must update.
+
+Clicking a notification must navigate to/open the related task/project.
+
+---
+
+# 36. PROFILE MENU MUST WORK
+
+Click avatar.
+
+Open:
+
+```text
+Alex Kumar
+Admin
+
+Profile
+Settings
+Appearance
+Keyboard shortcuts
+
+────────────────
+
+Log out
+```
+
+Every option must work.
+
+---
+
+# 37. THEME SWITCHING MUST WORK
+
+Theme options:
+
+* Light
+* Dark
+* System
+
+Changing theme must immediately update the entire application.
+
+Persist preference in localStorage.
+
+Do not refresh the page.
+
+---
+
+# 38. SETTINGS MUST WORK
+
+Settings navigation must work.
+
+Pages:
+
+* General
+* Profile
+* Notifications
+* Security
+* Workspace
+* Members
+* Billing
+* Appearance
+
+Each must contain functional controls.
+
+---
+
+# 39. PROFILE SETTINGS
+
+Allow editing:
+
+* Name
+* Email
+* Job title
+* Avatar
+
+Save button must update profile data.
+
+Show:
+
+**Profile updated successfully**
+
+---
+
+# 40. NOTIFICATION SETTINGS
+
+Create functional switches:
+
+* Email notifications
+* Task assignments
+* Mentions
+* Project updates
+* Weekly summary
+
+Toggling them must update state.
+
+Persist preferences.
+
+---
+
+# 41. SECURITY SETTINGS
+
+Frontend mock functionality:
+
+* Change password form
+* Active sessions
+* Log out other sessions
+* Two-factor authentication toggle
+
+All actions should produce realistic UI feedback.
+
+No real security backend is required.
+
+Clearly treat these as frontend mock operations.
+
+---
+
+# 42. BILLING PAGE
+
+Create functional plan-selection UI.
+
+Plans:
+
+* Free
+* Pro
+* Business
+
+Selecting a plan should update the selected plan in frontend state.
+
+Do not process real payments.
+
+Show realistic mock billing information.
+
+Buttons must provide meaningful mock behavior.
+
+---
+
+# 43. COMMAND MENU
+
+Support:
+
+`⌘ K`
+
+and:
+
+`Ctrl K`
+
+Commands:
+
+```text
+Create task
+Create project
+Go to dashboard
+Go to projects
+Go to tasks
+Go to calendar
+Go to team
+Go to analytics
+Open settings
+Toggle dark mode
+```
+
+Every command must execute the corresponding action.
+
+---
+
+# 44. KEYBOARD SHORTCUTS
+
+Implement useful shortcuts.
+
+Examples:
+
+`Ctrl/Cmd + K`
+
+→ Search
+
+`N`
+
+→ New task where appropriate
+
+`C`
+
+→ Create
+
+`Esc`
+
+→ Close modal/drawer
+
+Do not interfere with normal text input.
+
+---
+
+# 45. MODALS MUST WORK
+
+Every modal must:
+
+* Open
+* Close
+* Cancel
+* Submit
+* Validate
+* Show loading
+* Show success
+* Show error where appropriate
+
+Support:
+
+* Escape key
+* Clicking close button
+
+Do not close destructive confirmation accidentally.
+
+---
+
+# 46. TOAST SYSTEM
+
+Create reusable toast notifications.
+
+Examples:
+
+Success:
+
+**Task created successfully**
+
+Success:
+
+**Project updated successfully**
+
+Success:
+
+**Changes saved**
+
+Error:
+
+**Unable to delete task**
+
+Info:
+
+**3 tasks selected**
+
+Toasts must disappear automatically.
+
+Allow manual dismissal.
+
+---
+
+# 47. FORMS MUST ACTUALLY SUBMIT
+
+Every form must:
+
+1. Validate
+2. Show validation errors
+3. Disable submit while loading
+4. Simulate async request
+5. Update application state
+6. Show success feedback
+7. Close or redirect appropriately
+
+Never allow a form submit button to do nothing.
+
+---
+
+# 48. DROPDOWNS MUST WORK
+
+Every dropdown must:
+
+* Open
+* Close
+* Select option
+* Display selected value
+* Support keyboard navigation where reasonable
+
+Do not use fake dropdown visuals.
+
+---
+
+# 49. TABS MUST WORK
+
+Every tab group must render actual content.
+
+Examples:
+
+Project tabs
+
+Settings tabs
+
+Notification tabs
+
+Task tabs
+
+Analytics tabs
+
+No dead tabs.
+
+---
+
+# 50. SEARCH + FILTER COMBINATION
+
+Search and filters must work together.
+
+Example:
+
+Search:
+
+`dashboard`
+
+Status:
+
+`In Progress`
+
+Priority:
+
+`High`
+
+Result:
+
+Only tasks matching all criteria.
+
+Provide:
+
+**Clear filters**
+
+button.
+
+---
+
+# 51. RECENT ITEMS MUST WORK
+
+Track recently opened:
+
+* Projects
+* Tasks
+* People
+
+Display them under:
+
+**Recent**
+
+Clicking an item opens the correct destination.
+
+Persist recent items locally.
+
+---
+
+# 52. FAVORITES MUST WORK
+
+Users can favorite:
+
+* Projects
+* Tasks
+
+Favorite items appear under Favorites.
+
+Clicking favorite again removes it.
+
+Persist locally.
+
+---
+
+# 53. LOADING STATES
+
+Every async-style operation must have a loading state.
+
+Examples:
+
+```text
+Creating project...
+Saving changes...
+Deleting task...
+Loading tasks...
+Updating member...
+```
+
+Buttons should show a spinner or loading indicator.
+
+Prevent duplicate submissions.
+
+---
+
+# 54. ERROR HANDLING
+
+Simulate occasional service errors where useful.
+
+Display useful errors.
+
+Example:
+
+**Something went wrong**
+
+We couldn't save your changes.
+
+`Try again`
+
+The retry button must actually retry.
+
+---
+
+# 55. OPTIMISTIC UI
+
+For simple operations such as:
+
+* Favorite
+* Mark notification read
+* Checklist toggle
+* Status change
+
+update the UI immediately.
+
+If a mock service fails, revert the state and show an error.
+
+---
+
+# 56. DATA CONSISTENCY
+
+This is extremely important.
+
+When data changes in one place, all relevant screens must reflect the change.
+
+Example:
+
+If a task is moved from:
+
+`Todo → Done`
+
+then update:
+
+* Kanban
+* Task table
+* Project task count
+* Dashboard completed count
+* Analytics
+* Recent activity
+* My Tasks
+
+Do not maintain isolated fake copies of the same data.
+
+Use a shared state/data layer.
+
+---
+
+# 57. PERSISTENCE
+
+Use localStorage for frontend persistence where appropriate.
+
+Persist:
+
+* Theme
+* Workspace selection
+* Favorites
+* Recent items
+* User preferences
+* Mock projects
+* Mock tasks
+* Notifications
+* Settings
+
+After browser refresh, the user's changes should remain.
+
+---
+
+# 58. ROUTING STATE
+
+When navigating directly to:
+
+```text
+/projects/123
+```
+
+the application should render the correct project.
+
+When navigating to:
+
+```text
+/projects/123/board
+```
+
+the correct Kanban view should open.
+
+When opening a task:
+
+```text
+/tasks/123
+```
+
+or equivalent route/state, the correct task should open.
+
+Avoid broken routes.
+
+---
+
+# 59. BACK BUTTON / NAVIGATION
+
+Browser back/forward navigation should work correctly.
+
+Do not build an application that only works by clicking sidebar links.
+
+---
+
+# 60. 404 PAGE
+
+Unknown routes should display:
+
+```text
+404
+
+Page not found
+
+Go back
+Go to dashboard
+```
+
+Both buttons must work.
+
+---
+
+# 61. MOBILE INTERACTIONS
+
+At mobile width:
+
+* Sidebar opens/closes
+* Search works
+* Create menu works
+* Notifications work
+* Filters open in a sheet/drawer
+* Task drawer becomes full-screen or bottom sheet
+* Kanban scrolls
+* Forms remain usable
+* Tables remain usable
+* Buttons remain accessible
+
+Do not remove functionality simply because the viewport is smaller.
+
+---
+
+# 62. ACCESSIBILITY
+
+All interactions must support:
+
+* Keyboard focus
+* Enter
+* Space
+* Escape
+* Visible focus indicators
+
+Interactive icons need accessible labels.
+
+Example:
+
+```text
+aria-label="Create task"
+```
+
+Do not create icon-only buttons without accessible labels.
+
+---
+
+# 63. NO FAKE FUNCTIONALITY
+
+Before finalizing, scan the entire application for:
+
+```text
+onClick={() => {}}
+```
+
+Unused buttons.
+
+Placeholder links.
+
+Fake dropdowns.
+
+Fake switches.
+
+Fake tabs.
+
+Fake pagination.
+
+Fake filters.
+
+Fake search.
+
+Buttons that only close the current menu.
+
+Buttons that only show a toast but don't perform the actual operation.
+
+Remove or implement them.
+
+---
+
+# 64. FUNCTIONALITY AUDIT
+
+Perform a complete interaction audit.
+
+Go through the application page by page.
+
+## Dashboard
+
+Test:
+
+* Search
+* Create
+* Date filter
+* Project cards
+* Project progress
+* Activity items
+* My Tasks
+* Notifications
+* Profile menu
+* Theme
+
+## Projects
+
+Test:
+
+* Search
+* Filter
+* Sort
+* Create
+* Edit
+* Delete
+* Favorite
+* Open project
+
+## Project
+
+Test:
+
+* Overview
+* Board
+* List
+* Timeline
+* Files
+* Activity
+* Create task
+* Edit task
+* Delete task
+* Move task
+* Assign task
+
+## Tasks
+
+Test:
+
+* Search
+* Filters
+* Sorting
+* Selection
+* Bulk actions
+* Pagination
+* Create
+* Edit
+* Delete
+
+## Calendar
+
+Test:
+
+* Month
+* Week
+* Day
+* Previous
+* Next
+* Today
+* Create event
+* Open task/event
+
+## Team
+
+Test:
+
+* Search
+* Filter
+* Invite
+* Edit
+* Role change
+* Remove
+
+## Analytics
+
+Test:
+
+* Date range
+* Charts
+* Tooltips
+* Filters
+
+## Notifications
+
+Test:
+
+* Open
+* Read
+* Unread
+* Mark all read
+* Navigate to related item
+
+## Settings
+
+Test every tab and every control.
+
+---
+
+# 65. FINAL QA REQUIREMENT
+
+Before declaring the project finished, perform a **full user-flow test**.
+
+Simulate this workflow:
+
+```text
+Login
+↓
+Dashboard
+↓
+Create project
+↓
+Open project
+↓
+Create task
+↓
+Assign task
+↓
+Set priority
+↓
+Set due date
+↓
+Move task to In Progress
+↓
+Open task
+↓
+Add checklist
+↓
+Add comment
+↓
+Move task to Done
+↓
+Check dashboard
+↓
+Check analytics
+↓
+Check notifications
+↓
+Open settings
+↓
+Change theme
+↓
+Refresh page
+↓
+Confirm state persisted
+```
+
+Every step must work.
+
+---
+
+# 66. IMPORTANT PORTFOLIO REQUIREMENT
+
+The application should demonstrate more than visual design.
+
+It should demonstrate:
+
+* React architecture
+* State management
+* Routing
+* CRUD operations
+* Reusable components
+* Form validation
+* Filtering
+* Searching
+* Sorting
+* Pagination
+* Modal workflows
+* Drawer workflows
+* Local persistence
+* Responsive design
+* Dark mode
+* Error handling
+* Loading states
+* Optimistic UI
+* Data consistency
+* Accessibility
+
+This is essential for making the project useful as a serious frontend portfolio project.
+
+---
+
+# 67. FINAL RULE
+
+DO NOT rebuild the existing design from scratch.
+
+Keep the existing visual design.
+
+**Upgrade the functionality underneath it.**
+
+The final result must satisfy this rule:
+
+> **If the user can see it, the user can interact with it. If the user interacts with it, the application must respond correctly.**
+
+No dead UI.
+
+No fake controls.
+
+No unfinished interactions.
+
+No placeholder buttons.
+
+No decorative-only operations.
+
+Every operation should have:
+
+**Action → State change → UI update → Feedback**
+
+For example:
+
+```text
+Create task
+↓
+Loading
+↓
+Task created
+↓
+Task appears in list/board
+↓
+Dashboard counts update
+↓
+Success toast
+```
+
+This principle must be applied consistently throughout the entire WorkFlow application.
+
+The finished frontend should behave like a **complete, realistic SaaS application powered by mock services**, ready to have a real Express/MongoDB backend connected later.

@@ -1,0 +1,10 @@
+{
+  "description": "Manage projects, tasks, and teams with a polished, responsive SaaS frontend designed for startups and software teams to collaborate efficiently.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
