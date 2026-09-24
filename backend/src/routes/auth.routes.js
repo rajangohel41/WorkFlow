@@ -53,11 +53,12 @@ router.post("/register", async (req, res, next) => {
       verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
       tokenVersion: 0,
     })
+    const isDev = process.env.NODE_ENV !== "production"
     setAuthCookies(res, user._id.toString(), user.tokenVersion)
     res.status(201).json({
       user: serializeUser(user),
       verificationRequired: true,
-      devVerificationCode: verificationCode,
+      ...(isDev && { devVerificationCode: verificationCode }),
     })
   } catch (error) {
     next(error)
@@ -174,7 +175,11 @@ router.post("/resend-verification", requireAuth, async (req, res, next) => {
     user.verificationCode = randomCode()
     user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000)
     await user.save()
-    res.json({ success: true, devVerificationCode: user.verificationCode })
+    const isDev = process.env.NODE_ENV !== "production"
+    res.json({
+      success: true,
+      ...(isDev && { devVerificationCode: user.verificationCode }),
+    })
   } catch (error) {
     next(error)
   }
@@ -190,9 +195,10 @@ router.post("/forgot-password", async (req, res, next) => {
       user.resetToken = randomToken()
       user.resetExpires = new Date(Date.now() + 60 * 60 * 1000)
       await user.save()
+      const isDev = process.env.NODE_ENV !== "production"
       res.json({
         success: true,
-        devResetToken: user.resetToken,
+        ...(isDev && { devResetToken: user.resetToken }),
       })
       return
     }

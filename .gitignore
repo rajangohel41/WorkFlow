@@ -19,7 +19,6 @@ logs/
 *.log
 .claude-replay.*
 .tmp-*
-/.figma/design-context/
 backend/uploads/*
 !backend/uploads/.gitkeep
 /.plugins/

@@ -185,8 +185,12 @@ router.post("/invitations", requireOrganization, requireRole("Owner", "Admin", "
       acceptedAt: { $exists: false },
       expiresAt: { $gt: new Date() },
     })
+    const isDev = process.env.NODE_ENV !== "production"
     if (existingInvite) {
-      return res.status(409).json({ message: "Invitation already pending for this email", devInviteToken: existingInvite.token })
+      return res.status(409).json({
+        message: "Invitation already pending for this email",
+        ...(isDev && { devInviteToken: existingInvite.token }),
+      })
     }
 
     const token = crypto.randomBytes(24).toString("hex")
@@ -198,7 +202,10 @@ router.post("/invitations", requireOrganization, requireRole("Owner", "Admin", "
       invitedBy: req.user._id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     })
-    res.status(201).json({ success: true, devInviteToken: token })
+    res.status(201).json({
+      success: true,
+      ...(isDev && { devInviteToken: token }),
+    })
   } catch (error) {
     next(error)
   }
