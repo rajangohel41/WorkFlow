@@ -19,4 +19,7 @@ const commentSchema = new mongoose.Schema(
   { timestamps: true },
 )
 
+commentSchema.index({ taskId: 1, createdAt: 1 })
+commentSchema.index({ organizationId: 1 })
+
 export const Comment = mongoose.model("Comment", commentSchema)

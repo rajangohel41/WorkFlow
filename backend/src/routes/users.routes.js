@@ -25,7 +25,12 @@ router.patch("/profile", async (req, res, next) => {
 
 router.patch("/preferences", async (req, res, next) => {
   try {
-    req.user.preferences = { ...req.user.preferences, ...req.body }
+    const allowed = ["email", "assignments", "mentions", "projectUpdates", "weekly"]
+    for (const key of allowed) {
+      if (typeof req.body[key] === "boolean") {
+        req.user.preferences[key] = req.body[key]
+      }
+    }
     await req.user.save()
     res.json({ preferences: req.user.preferences })
   } catch (error) {

@@ -24,9 +24,9 @@ const cookieOptions = {
   path: "/",
 }
 
-function setAuthCookies(res, userId) {
-  const accessToken = signAccessToken(userId)
-  const refreshToken = signRefreshToken(userId)
+function setAuthCookies(res, userId, tokenVersion = 0) {
+  const accessToken = signAccessToken(userId, tokenVersion)
+  const refreshToken = signRefreshToken(userId, tokenVersion)
   res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 })
   res.cookie("refreshToken", refreshToken, {
     ...cookieOptions,
@@ -51,8 +51,9 @@ router.post("/register", async (req, res, next) => {
       passwordHash: await hashPassword(password),
       verificationCode,
       verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      tokenVersion: 0,
     })
-    setAuthCookies(res, user._id.toString())
+    setAuthCookies(res, user._id.toString(), user.tokenVersion)
     res.status(201).json({
       user: serializeUser(user),
       verificationRequired: true,
@@ -66,13 +67,16 @@ router.post("/register", async (req, res, next) => {
 router.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body
-    const user = await User.findOne({ email: email?.toLowerCase() }).select(
+    if (!email || typeof email !== "string" || !password || typeof password !== "string") {
+      return res.status(401).json({ message: "Invalid email or password" })
+    }
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
       "+passwordHash",
     )
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid email or password" })
     }
-    setAuthCookies(res, user._id.toString())
+    setAuthCookies(res, user._id.toString(), user.tokenVersion || 0)
     res.json({ user: serializeUser(user) })
   } catch (error) {
     next(error)
@@ -84,6 +88,18 @@ router.post("/logout", (_req, res) => {
   res.clearCookie("refreshToken", cookieOptions)
   res.clearCookie("organizationId", cookieOptions)
   res.json({ success: true })
+})
+
+router.post("/logout-all", requireAuth, async (req, res, next) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } })
+    res.clearCookie("accessToken", cookieOptions)
+    res.clearCookie("refreshToken", cookieOptions)
+    res.clearCookie("organizationId", cookieOptions)
+    res.json({ success: true, message: "All sessions revoked" })
+  } catch (error) {
+    next(error)
+  }
 })
 
 router.get("/me", requireAuth, async (req, res, next) => {
@@ -113,7 +129,14 @@ router.post("/refresh", async (req, res, next) => {
     const token = req.cookies?.refreshToken
     if (!token) return res.status(401).json({ message: "Refresh required" })
     const payload = verifyRefreshToken(token)
-    setAuthCookies(res, payload.sub)
+    const user = await User.findById(payload.sub)
+    if (!user) return res.status(401).json({ message: "Invalid session" })
+    if (payload.v !== undefined && user.tokenVersion !== undefined && payload.v < user.tokenVersion) {
+      res.clearCookie("accessToken", cookieOptions)
+      res.clearCookie("refreshToken", cookieOptions)
+      return res.status(401).json({ message: "Session revoked" })
+    }
+    setAuthCookies(res, user._id.toString(), user.tokenVersion || 0)
     res.json({ success: true })
   } catch {
     res.status(401).json({ message: "Refresh failed" })
@@ -195,7 +218,9 @@ router.post("/reset-password", async (req, res, next) => {
     user.passwordHash = await hashPassword(password)
     user.resetToken = undefined
     user.resetExpires = undefined
+    user.tokenVersion = (user.tokenVersion || 0) + 1
     await user.save()
+    setAuthCookies(res, user._id.toString(), user.tokenVersion)
     res.json({ success: true })
   } catch (error) {
     next(error)
@@ -213,7 +238,9 @@ router.post("/change-password", requireAuth, async (req, res, next) => {
       return res.status(422).json({ message: "Password must be at least 8 characters" })
     }
     user.passwordHash = await hashPassword(newPassword)
+    user.tokenVersion = (user.tokenVersion || 0) + 1
     await user.save()
+    setAuthCookies(res, user._id.toString(), user.tokenVersion)
     res.json({ success: true })
   } catch (error) {
     next(error)

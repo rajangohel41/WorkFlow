@@ -145,10 +145,20 @@ router.get("/members", requireOrganization, async (req, res, next) => {
 router.post("/invitations", requireOrganization, requireRole("Owner", "Admin", "Manager"), async (req, res, next) => {
   try {
     const { email, role = "Member" } = req.body
-    if (!email?.includes("@")) {
+    if (!email || typeof email !== "string" || !email.includes("@")) {
       return res.status(422).json({ message: "Valid email required" })
     }
-    const existingUser = await User.findOne({ email: email.toLowerCase() })
+    const validRoles = ["Admin", "Manager", "Member", "Viewer"]
+    if (!validRoles.includes(role)) {
+      return res.status(422).json({ message: "Invalid role specified" })
+    }
+    // Only Owner can invite Admins
+    if (role === "Admin" && req.membership.role !== "Owner") {
+      return res.status(403).json({ message: "Only Owner can invite Admins" })
+    }
+
+    const normalizedEmail = email.toLowerCase().trim()
+    const existingUser = await User.findOne({ email: normalizedEmail })
     if (existingUser) {
       const existingMember = await OrganizationMember.findOne({
         organizationId: req.organization._id,
@@ -167,10 +177,22 @@ router.post("/invitations", requireOrganization, requireRole("Owner", "Admin", "
       )
       return res.status(201).json({ success: true, immediate: true })
     }
+
+    // Check existing pending invitation
+    const existingInvite = await Invitation.findOne({
+      organizationId: req.organization._id,
+      email: normalizedEmail,
+      acceptedAt: { $exists: false },
+      expiresAt: { $gt: new Date() },
+    })
+    if (existingInvite) {
+      return res.status(409).json({ message: "Invitation already pending for this email", devInviteToken: existingInvite.token })
+    }
+
     const token = crypto.randomBytes(24).toString("hex")
     await Invitation.create({
       organizationId: req.organization._id,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       role,
       token,
       invitedBy: req.user._id,
@@ -182,17 +204,83 @@ router.post("/invitations", requireOrganization, requireRole("Owner", "Admin", "
   }
 })
 
+router.post("/invitations/:token/accept", async (req, res, next) => {
+  try {
+    const { token } = req.params
+    const invitation = await Invitation.findOne({ token })
+    if (!invitation) {
+      return res.status(404).json({ message: "Invitation not found" })
+    }
+    if (invitation.acceptedAt) {
+      return res.status(410).json({ message: "Invitation has already been accepted" })
+    }
+    if (invitation.expiresAt < new Date()) {
+      return res.status(410).json({ message: "Invitation has expired" })
+    }
+
+    await OrganizationMember.findOneAndUpdate(
+      {
+        organizationId: invitation.organizationId,
+        userId: req.user._id,
+      },
+      {
+        role: invitation.role,
+        status: "Active",
+      },
+      { upsert: true, new: true },
+    )
+    invitation.acceptedAt = new Date()
+    await invitation.save()
+
+    const org = await Organization.findById(invitation.organizationId)
+    res.cookie("organizationId", org._id.toString(), {
+      ...cookieOptions,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    })
+    res.json({
+      success: true,
+      organization: {
+        id: org._id.toString(),
+        name: org.name,
+        slug: org.slug,
+        role: invitation.role,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.patch("/members/:userId", requireOrganization, requireRole("Owner", "Admin"), async (req, res, next) => {
   try {
     const { role } = req.body
+    const validRoles = ["Owner", "Admin", "Manager", "Member", "Viewer"]
+    if (!validRoles.includes(role)) {
+      return res.status(422).json({ message: "Invalid role specified" })
+    }
+    if (!mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(400).json({ message: "Invalid user ID" })
+    }
+
     const membership = await OrganizationMember.findOne({
       organizationId: req.organization._id,
       userId: req.params.userId,
     })
     if (!membership) return res.status(404).json({ message: "Member not found" })
+
+    // Only Owner can assign or transfer the Owner role
+    if (role === "Owner" && req.membership.role !== "Owner") {
+      return res.status(403).json({ message: "Only the organization owner can assign the owner role" })
+    }
+    // Demoting Owner is forbidden unless caller is Owner
     if (membership.role === "Owner" && role !== "Owner") {
       return res.status(403).json({ message: "Cannot change owner role" })
     }
+    // Admin cannot change another Admin's role
+    if (membership.role === "Admin" && req.membership.role !== "Owner" && membership.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Only the Owner can modify another Admin's role" })
+    }
+
     membership.role = role
     await membership.save()
     res.json({ success: true })
@@ -203,6 +291,9 @@ router.patch("/members/:userId", requireOrganization, requireRole("Owner", "Admi
 
 router.delete("/members/:userId", requireOrganization, requireRole("Owner", "Admin"), async (req, res, next) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(400).json({ message: "Invalid user ID" })
+    }
     const membership = await OrganizationMember.findOne({
       organizationId: req.organization._id,
       userId: req.params.userId,
@@ -210,6 +301,10 @@ router.delete("/members/:userId", requireOrganization, requireRole("Owner", "Adm
     if (!membership) return res.status(404).json({ message: "Member not found" })
     if (membership.role === "Owner") {
       return res.status(403).json({ message: "Cannot remove organization owner" })
+    }
+    // Admin cannot remove another Admin
+    if (membership.role === "Admin" && req.membership.role !== "Owner") {
+      return res.status(403).json({ message: "Only the Owner can remove an Admin" })
     }
     membership.status = "Removed"
     await membership.save()
@@ -220,3 +315,4 @@ router.delete("/members/:userId", requireOrganization, requireRole("Owner", "Adm
 })
 
 export default router
+

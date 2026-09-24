@@ -15,4 +15,7 @@ const activitySchema = new mongoose.Schema(
   { timestamps: true },
 )
 
+activitySchema.index({ organizationId: 1, createdAt: -1 })
+activitySchema.index({ organizationId: 1, target: 1, createdAt: -1 })
+
 export const Activity = mongoose.model("Activity", activitySchema)

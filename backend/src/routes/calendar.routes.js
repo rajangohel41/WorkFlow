@@ -68,10 +68,16 @@ router.post("/", requireRole("Owner", "Admin", "Manager", "Member"), async (req,
 
 router.delete("/:id", requireRole("Owner", "Admin", "Manager"), async (req, res, next) => {
   try {
-    await CalendarEvent.deleteOne({
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid event ID" })
+    }
+    const result = await CalendarEvent.deleteOne({
       _id: req.params.id,
       organizationId: req.organization._id,
     })
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: "Event not found" })
+    }
     res.json({ success: true })
   } catch (error) {
     next(error)

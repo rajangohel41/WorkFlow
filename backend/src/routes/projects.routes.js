@@ -37,14 +37,19 @@ router.get("/", async (req, res, next) => {
       organizationId: req.organization._id,
       archived: archived === "true",
     }
-    if (search) filter.name = { $regex: search, $options: "i" }
-    if (status) filter.status = status
+    if (search && typeof search === "string" && search.trim()) {
+      const sanitized = search.trim().slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      filter.name = { $regex: sanitized, $options: "i" }
+    }
+    if (status && typeof status === "string") filter.status = status
     const sortMap = {
       name: { name: 1 },
       updated: { updatedAt: -1 },
       due: { dueDate: 1 },
     }
-    const skip = (Number(page) - 1) * Number(limit)
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50))
+    const safePage = Math.max(1, Number(page) || 1)
+    const skip = (safePage - 1) * safeLimit
     const [projects, total] = await Promise.all([
       Project.find(filter)
         .sort(sortMap[sort] || sortMap.updated)

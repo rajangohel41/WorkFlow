@@ -1,3 +1,4 @@
+import mongoose from "mongoose"
 import { verifyAccessToken } from "../utils/tokens.js"
 import { User } from "../models/User.js"
 import {
@@ -19,6 +20,9 @@ export async function requireAuth(req, res, next) {
     if (!user) {
       return res.status(401).json({ message: "Invalid session" })
     }
+    if (payload.v !== undefined && user.tokenVersion !== undefined && payload.v < user.tokenVersion) {
+      return res.status(401).json({ message: "Session revoked" })
+    }
     req.user = user
     next()
   } catch {
@@ -31,6 +35,9 @@ export async function requireOrganization(req, res, next) {
     req.headers["x-organization-id"] || req.cookies?.organizationId
   if (!orgId) {
     return res.status(400).json({ message: "Organization context required" })
+  }
+  if (!mongoose.isValidObjectId(orgId)) {
+    return res.status(400).json({ message: "Invalid organization ID format" })
   }
   const membership = await OrganizationMember.findOne({
     organizationId: orgId,

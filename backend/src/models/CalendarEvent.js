@@ -18,4 +18,6 @@ const calendarEventSchema = new mongoose.Schema(
   { timestamps: true },
 )
 
+calendarEventSchema.index({ organizationId: 1, day: 1 })
+
 export const CalendarEvent = mongoose.model("CalendarEvent", calendarEventSchema)

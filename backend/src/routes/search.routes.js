@@ -12,20 +12,22 @@ router.use(requireAuth, requireOrganization)
 
 router.get("/", async (req, res, next) => {
   try {
-    const q = (req.query.q || "").trim()
-    if (!q) return res.json({ projects: [], tasks: [], members: [] })
+    const rawQ = typeof req.query.q === "string" ? req.query.q.trim() : ""
+    if (!rawQ) return res.json({ projects: [], tasks: [], members: [] })
+    const q = rawQ.slice(0, 100)
+    const escapedQ = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     const orgId = req.organization._id
     const [projects, tasks, memberships] = await Promise.all([
       Project.find({
         organizationId: orgId,
         archived: false,
-        name: { $regex: q, $options: "i" },
+        name: { $regex: escapedQ, $options: "i" },
       }).limit(8),
       Task.find({
         organizationId: orgId,
         $or: [
-          { title: { $regex: q, $options: "i" } },
-          { displayId: { $regex: q, $options: "i" } },
+          { title: { $regex: escapedQ, $options: "i" } },
+          { displayId: { $regex: escapedQ, $options: "i" } },
         ],
       }).limit(8),
       OrganizationMember.find({

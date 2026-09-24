@@ -27,6 +27,7 @@ const userSchema = new mongoose.Schema(
       weekly: { type: Boolean, default: true },
     },
     refreshTokens: [{ token: String, expires: Date }],
+    tokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true },
 )

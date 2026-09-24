@@ -22,5 +22,7 @@ const projectSchema = new mongoose.Schema(
 )
 
 projectSchema.index({ organizationId: 1, slug: 1 }, { unique: true })
+projectSchema.index({ organizationId: 1, updatedAt: -1 })
+projectSchema.index({ organizationId: 1, archived: 1 })
 
 export const Project = mongoose.model("Project", projectSchema)

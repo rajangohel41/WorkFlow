@@ -1,4 +1,5 @@
 import { Router } from "express"
+import mongoose from "mongoose"
 import { Notification } from "../models/Notification.js"
 import { requireAuth, requireOrganization } from "../middleware/auth.js"
 import { serializeNotification } from "../services/serializers.js"
@@ -26,6 +27,9 @@ router.get("/", async (req, res, next) => {
 
 router.patch("/:id/read", async (req, res, next) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid notification ID" })
+    }
     const notification = await Notification.findOne({
       _id: req.params.id,
       userId: req.user._id,

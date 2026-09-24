@@ -2,6 +2,7 @@ import { Router } from "express"
 import mongoose from "mongoose"
 import multer from "multer"
 import path from "node:path"
+import fs from "node:fs"
 import { Task, nextTaskDisplayId } from "../models/Task.js"
 import { Project } from "../models/Project.js"
 import { User } from "../models/User.js"
@@ -17,18 +18,49 @@ const router = Router()
 
 router.use(requireAuth, requireOrganization)
 
+const ALLOWED_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp",
+  ".pdf", ".txt", ".csv", ".docx", ".xlsx", ".pptx", ".zip"
+])
+const ALLOWED_MIME_TYPES = new Set([
+  "image/png", "image/jpeg", "image/gif", "image/webp",
+  "application/pdf", "text/plain", "text/csv",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip", "application/x-zip-compressed"
+])
+
+const fileFilter = (_req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase()
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return cb(new Error(`File type ${ext} is not allowed`))
+  }
+  if (!ALLOWED_MIME_TYPES.has(file.mimetype.toLowerCase())) {
+    return cb(new Error(`MIME type ${file.mimetype} is not allowed`))
+  }
+  cb(null, true)
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, "uploads/")
   },
   filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    const sanitizedBase = path
+      .basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .slice(0, 50)
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
-    cb(null, `${unique}-${file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`)
+    cb(null, `${unique}-${sanitizedBase}${ext}`)
   },
 })
+
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter,
 })
 
 async function loadTaskContext(req) {
@@ -387,7 +419,7 @@ router.delete("/:taskId/comments/:commentId", async (req, res, next) => {
     if (!comment) return res.status(404).json({ message: "Comment not found" })
     if (
       comment.authorId.toString() !== req.user._id.toString() &&
-      !["Owner", "Admin"].includes(req.memberRole)
+      !["Owner", "Admin"].includes(req.membership?.role)
     ) {
       return res.status(403).json({ message: "Not permitted to delete this comment" })
     }
@@ -447,6 +479,24 @@ router.delete("/:taskId/attachments/:attachmentId", async (req, res, next) => {
   try {
     const ctx = await loadTaskContext(req)
     if (!ctx) return res.status(404).json({ message: "Task not found" })
+    const attachment = (ctx.task.attachments || []).find(
+      (a) => a._id.toString() === req.params.attachmentId,
+    )
+    if (!attachment) {
+      return res.status(404).json({ message: "Attachment not found" })
+    }
+    const isUploader = attachment.uploadedBy?.toString() === req.user._id.toString()
+    const isPrivileged = ["Owner", "Admin", "Manager"].includes(req.membership?.role)
+    if (!isUploader && !isPrivileged) {
+      return res.status(403).json({ message: "Not permitted to delete this attachment" })
+    }
+
+    if (attachment.url) {
+      const filename = path.basename(attachment.url)
+      const diskPath = path.join(process.cwd(), "uploads", filename)
+      fs.unlink(diskPath, () => {})
+    }
+
     ctx.task.attachments = (ctx.task.attachments || []).filter(
       (a) => a._id.toString() !== req.params.attachmentId,
     )
