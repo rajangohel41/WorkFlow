@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import { setOrganizationId } from "../api/client.js"
 
 export const useAppStore = create(
   persist(
@@ -13,6 +14,8 @@ export const useAppStore = create(
       createMenu: false,
       task: null,
       createModal: null,
+      createModalStatus: "Backlog",
+      createModalProjectId: null,
       workspaceMenu: false,
       organizationId: null,
       organization: null,
@@ -23,11 +26,9 @@ export const useAppStore = create(
       recent: [],
       toasts: [],
       preferences: {
-        email: true,
         assignments: true,
         mentions: true,
         projectUpdates: false,
-        weekly: true,
       },
       profile: {
         name: "",
@@ -50,7 +51,13 @@ export const useAppStore = create(
       setCommandOpen: (commandOpen) => set({ commandOpen }),
       setCreateMenu: (createMenu) => set({ createMenu }),
       setTask: (task) => set({ task }),
-      setCreateModal: (createModal) => set({ createModal, createMenu: false }),
+      setCreateModal: (createModal, options = {}) =>
+        set({
+          createModal,
+          createModalStatus: options.status || "Backlog",
+          createModalProjectId: options.projectId || null,
+          createMenu: false,
+        }),
       setWorkspaceMenu: (workspaceMenu) => set({ workspaceMenu }),
       setAuth: (user) =>
         set({
@@ -67,9 +74,28 @@ export const useAppStore = create(
           user: null,
           organization: null,
           organizationId: null,
+          workspace: "",
+          role: "Member",
+          plan: "Business",
+          profile: { name: "", email: "", title: "" },
+          preferences: {
+            assignments: true,
+            mentions: true,
+            projectUpdates: false,
+          },
+          favorites: [],
+          recent: [],
+          notificationsOpen: false,
+          commandOpen: false,
+          createMenu: false,
+          createModal: null,
+          workspaceMenu: false,
           task: null,
         }),
-      setOrganization: (organization) =>
+      setOrganization: (organization) => {
+        if (organization?.id) {
+          setOrganizationId(organization.id)
+        }
         set({
           organization,
           organizationId: organization?.id || null,
@@ -77,7 +103,8 @@ export const useAppStore = create(
           role: organization?.role || "Member",
           plan: organization?.plan || "Business",
           workspaceMenu: false,
-        }),
+        })
+      },
       addToast: (message, tone = "success") => {
         const id = Date.now() + Math.random()
         set((state) => ({ toasts: [...state.toasts, { id, message, tone }] }))
@@ -119,9 +146,7 @@ export const useAppStore = create(
       onRehydrateStorage: () => (state) => {
         state?.setTheme(state.themeMode || (state.dark ? "dark" : "light"))
         if (state?.organizationId) {
-          import("../api/client.js").then(({ setOrganizationId }) =>
-            setOrganizationId(state.organizationId),
-          )
+          setOrganizationId(state.organizationId)
         }
       },
     },

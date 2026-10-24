@@ -12,6 +12,7 @@ const attachmentSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     url: { type: String, required: true },
+    blobUrl: { type: String },
     size: { type: Number },
     mimeType: { type: String },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -54,6 +55,8 @@ const taskSchema = new mongoose.Schema(
     attachments: [attachmentSchema],
     commentCount: { type: Number, default: 0 },
     fileCount: { type: Number, default: 0 },
+    position: { type: Number, default: 0 },
+    version: { type: Number, default: 1 },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true },
@@ -61,10 +64,12 @@ const taskSchema = new mongoose.Schema(
 
 taskSchema.index({ organizationId: 1, displayId: 1 }, { unique: true })
 taskSchema.index({ organizationId: 1, projectId: 1, status: 1 })
+taskSchema.index({ organizationId: 1, projectId: 1, position: 1 })
 taskSchema.index({ organizationId: 1, updatedAt: -1 })
 taskSchema.index({ organizationId: 1, assigneeId: 1 })
 
 export const Task = mongoose.model("Task", taskSchema)
+
 
 export const TaskCounter = mongoose.model(
   "TaskCounter",

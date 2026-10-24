@@ -8,8 +8,15 @@ import { Comment } from "../models/Comment.js"
 import { Activity } from "../models/Activity.js"
 import { Notification } from "../models/Notification.js"
 import { CalendarEvent } from "../models/CalendarEvent.js"
+import { env } from "../config/env.js"
 
 export async function seedDatabase() {
+  if (
+    process.env.NODE_ENV === "production" ||
+    (process.env.NODE_ENV !== "test" && /prod|atlas|mongodb\.net/i.test(env.mongoUri))
+  ) {
+    throw new Error("Refusing to seed database in production or cloud database environments.")
+  }
   await connectDb()
   console.log("Seeding database...")
 
@@ -28,19 +35,16 @@ export async function seedDatabase() {
   ])
 
   // 1. Create Users
-  const defaultPasswordHash = await hashPassword("password123")
+  const defaultPasswordHash = await hashPassword("Password123!")
   const alex = await User.create({
     name: "Alex Kumar",
     email: "alex@acme.io",
     passwordHash: defaultPasswordHash,
     title: "Product Lead",
-    emailVerified: true,
     preferences: {
-      email: true,
       assignments: true,
       mentions: true,
       projectUpdates: true,
-      weekly: true,
     },
   })
 
@@ -49,7 +53,6 @@ export async function seedDatabase() {
     email: "sarah@acme.io",
     passwordHash: defaultPasswordHash,
     title: "Engineering Manager",
-    emailVerified: true,
   })
 
   const rahul = await User.create({
@@ -57,7 +60,6 @@ export async function seedDatabase() {
     email: "rahul@acme.io",
     passwordHash: defaultPasswordHash,
     title: "Full Stack Developer",
-    emailVerified: true,
   })
 
   const emily = await User.create({
@@ -65,7 +67,6 @@ export async function seedDatabase() {
     email: "emily@acme.io",
     passwordHash: defaultPasswordHash,
     title: "Product Designer",
-    emailVerified: true,
   })
 
   const john = await User.create({
@@ -73,7 +74,6 @@ export async function seedDatabase() {
     email: "john@acme.io",
     passwordHash: defaultPasswordHash,
     title: "DevOps Engineer",
-    emailVerified: true,
   })
 
   // 2. Create Organization
@@ -379,7 +379,7 @@ export async function seedDatabase() {
   ])
 
   console.log("Database seeded successfully!")
-  console.log("Test account: alex@acme.io / password123")
+  console.log("Test account: alex@acme.io / Password123!")
 }
 
 // Run directly if called via node

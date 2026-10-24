@@ -1,25 +1,39 @@
-import { Plus, Search, Trash2 } from "lucide-react"
-import { useState } from "react"
-import { useAppStore } from "../store/useAppStore.js"
-import { useMembers, useWorkflowMutations } from "../hooks/useWorkflowQueries.js"
+import { Plus, Search, Trash2, Send } from "lucide-react";
+import { useState } from "react";
+import { useAppStore } from "../store/useAppStore.js";
+import {
+  useMembers,
+  usePendingInvitations,
+  useWorkflowMutations,
+} from "../hooks/useWorkflowQueries.js";
 import {
   Avatar,
   Badge,
   Button,
   IconButton,
   PageHeader,
-} from "../components/ui/index.jsx"
+} from "../components/ui/index.jsx";
 
 export default function TeamPage() {
-  const setCreateModal = useAppStore((state) => state.setCreateModal)
-  const { data: membersData, isLoading } = useMembers()
-  const { updateMember, removeMember } = useWorkflowMutations()
+  const setCreateModal = useAppStore((state) => state.setCreateModal);
+  const { data: membersData, isLoading } = useMembers();
+  const { data: invitationsData, isLoading: invitationsLoading } =
+    usePendingInvitations();
+  const {
+    updateMember,
+    removeMember,
+    resendInvitation,
+    revokeInvitation,
+    acceptInvitation,
+    rejectInvitation,
+  } = useWorkflowMutations();
 
-  const members = membersData?.members || []
+  const members = membersData?.members || [];
+  const invitations = invitationsData?.invitations || [];
 
-  const [query, setQuery] = useState("")
-  const [role, setRole] = useState("All")
-  const [status, setStatus] = useState("All")
+  const [query, setQuery] = useState("");
+  const [role, setRole] = useState("All");
+  const [status, setStatus] = useState("All");
 
   const filtered = members
     .filter((person) =>
@@ -28,9 +42,11 @@ export default function TeamPage() {
         .includes(query.toLowerCase()),
     )
     .filter((person) => role === "All" || person.role === role)
-    .filter((person) => status === "All" || person.status === status)
+    .filter((person) => status === "All" || person.status === status);
 
-  const onlineCount = members.filter((person) => person.status === "Online").length
+  const onlineCount = members.filter(
+    (person) => person.status === "Online",
+  ).length;
 
   return (
     <div className="page">
@@ -47,7 +63,11 @@ export default function TeamPage() {
         <div>
           <span className="team-stack">
             {members.slice(0, 4).map((person) => (
-              <Avatar person={person} size="sm" key={person.id || person.email} />
+              <Avatar
+                person={person}
+                size="sm"
+                key={person.id || person.email}
+              />
             ))}
           </span>
           <span>
@@ -55,9 +75,7 @@ export default function TeamPage() {
             <small>{onlineCount || members.length} active now</small>
           </span>
         </div>
-        <Badge tone="success">
-          {onlineCount || members.length} online now
-        </Badge>
+        <Badge tone="success">{onlineCount || members.length} online now</Badge>
       </div>
       <div className="toolbar">
         <label className="search-input">
@@ -94,6 +112,51 @@ export default function TeamPage() {
           <option>Pending</option>
         </select>
       </div>
+      {invitationsLoading ? (
+        <div className="card invitation-list">
+          <p>Loading pending invitations...</p>
+        </div>
+      ) : invitations.length > 0 ? (
+        <div className="card invitation-list">
+          <div className="card-heading">
+            <div>
+              <h2>Pending invitations</h2>
+              <p>Workspaces that invited you</p>
+            </div>
+          </div>
+          {invitations.map((invitation) => (
+            <div className="invitation-row" key={invitation.id}>
+              <div>
+                <strong>{invitation.organization?.name || "Workspace"}</strong>
+                <small>
+                  {invitation.invitedBy?.name || "A team member"} invited you as{" "}
+                  {invitation.role} · Expires{" "}
+                  {new Date(invitation.expiresAt).toLocaleDateString()}
+                </small>
+              </div>
+              <div className="invitation-actions">
+                <Button
+                  onClick={() => acceptInvitation.mutate(invitation.token)}
+                  disabled={
+                    acceptInvitation.isPending || rejectInvitation.isPending
+                  }
+                >
+                  Accept
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => rejectInvitation.mutate(invitation.token)}
+                  disabled={
+                    acceptInvitation.isPending || rejectInvitation.isPending
+                  }
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="table-card team-table">
         {isLoading ? (
           <p className="loading-state">Loading team members...</p>
@@ -130,43 +193,84 @@ export default function TeamPage() {
                     </div>
                   </td>
                   <td>
-                    <select
-                      className="role-button"
-                      value={person.role || "Member"}
-                      onChange={(event) =>
-                        updateMember.mutate({
-                          userId: person.id,
-                          payload: { role: event.target.value },
-                        })
-                      }
-                      disabled={person.role === "Owner"}
-                    >
-                      <option>Owner</option>
-                      <option>Admin</option>
-                      <option>Manager</option>
-                      <option>Member</option>
-                      <option>Viewer</option>
-                    </select>
+                    {person.isInvitation ? (
+                      <span className="role-button" style={{ opacity: 0.8 }}>
+                        {person.role || "Member"}
+                      </span>
+                    ) : (
+                      <select
+                        className="role-button"
+                        value={person.role || "Member"}
+                        onChange={(event) =>
+                          updateMember.mutate({
+                            userId: person.id,
+                            payload: { role: event.target.value },
+                          })
+                        }
+                        disabled={person.role === "Owner"}
+                      >
+                        <option>Owner</option>
+                        <option>Admin</option>
+                        <option>Manager</option>
+                        <option>Member</option>
+                        <option>Viewer</option>
+                      </select>
+                    )}
                   </td>
                   <td>{person.projects || 0} projects</td>
                   <td>
-                    <span className="role-button">
+                    <span
+                      className={`role-button ${person.status === "Pending" ? "badge-warning" : ""}`}
+                    >
                       {person.status || "Active"}
                     </span>
                   </td>
                   <td>{person.last || "Recently"}</td>
                   <td>
-                    {person.role !== "Owner" && (
-                      <IconButton
-                        label={`Remove ${person.name}`}
-                        onClick={() =>
-                          window.confirm(`Remove ${person.name} from the workspace?`) &&
-                          removeMember.mutate(person.id)
-                        }
-                      >
-                        <Trash2 size={16} />
-                      </IconButton>
-                    )}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.25rem",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      {person.isInvitation ? (
+                        <>
+                          <IconButton
+                            label={`Resend invite to ${person.email}`}
+                            onClick={() =>
+                              resendInvitation.mutate(person.invitationToken)
+                            }
+                          >
+                            <Send size={15} />
+                          </IconButton>
+                          <IconButton
+                            label={`Revoke invite for ${person.email}`}
+                            onClick={() =>
+                              window.confirm(
+                                `Revoke invitation for ${person.email}?`,
+                              ) &&
+                              revokeInvitation.mutate(person.invitationToken)
+                            }
+                          >
+                            <Trash2 size={15} />
+                          </IconButton>
+                        </>
+                      ) : (
+                        person.role !== "Owner" && (
+                          <IconButton
+                            label={`Remove ${person.name}`}
+                            onClick={() =>
+                              window.confirm(
+                                `Remove ${person.name} from the workspace?`,
+                              ) && removeMember.mutate(person.id)
+                            }
+                          >
+                            <Trash2 size={16} />
+                          </IconButton>
+                        )
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -175,5 +279,5 @@ export default function TeamPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

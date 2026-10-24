@@ -21,6 +21,7 @@ import {
   IconButton,
   PageHeader,
 } from "../../components/ui/index.jsx"
+import { getTaskStatusPermission } from "../../utils/taskPermissions.js"
 
 const statusTone = {
   "In Progress": "info",
@@ -69,8 +70,7 @@ export default function TasksPage() {
           (task) =>
             tab !== "My Tasks" ||
             (task.assignee?.email === user?.email ||
-              task.assignee?.name === user?.name ||
-              task.assignee?.name === "Alex Kumar"),
+              task.assignee?.name === user?.name),
         )
         .filter(
           (task) =>
@@ -121,7 +121,27 @@ export default function TasksPage() {
     setPage(1)
   }
 
+  const selectedTasks = tasks.filter(
+    (t) => selected.includes(t.id) || selected.includes(t._id),
+  )
+  const hasUnassignedSelected = selectedTasks.some(
+    (t) => !t.assigneeId && !t.assignee,
+  )
+  const nonAssignableSelected = selectedTasks.filter((t) => {
+    const perm = getTaskStatusPermission(t, user)
+    return !perm.canChange
+  })
+  const canBulkChangeStatus =
+    selectedTasks.length > 0 && nonAssignableSelected.length === 0
+  const bulkStatusReason = hasUnassignedSelected
+    ? "Assign this task before changing its status"
+    : "Only the assigned team member can change this task's status."
+
   const bulkUpdate = (updates) => {
+    if (updates.status && !canBulkChangeStatus) {
+      addToast(bulkStatusReason, "error")
+      return
+    }
     selected.forEach((id) => updateTask.mutate({ id, payload: updates }))
     addToast(`${selected.length} tasks updated`)
     setSelected([])
@@ -248,11 +268,17 @@ export default function TasksPage() {
           <strong>{selected.length} selected</strong>
           <select
             aria-label="Bulk status"
+            disabled={!canBulkChangeStatus}
+            title={!canBulkChangeStatus ? bulkStatusReason : "Change status"}
             onChange={(event) =>
               event.target.value && bulkUpdate({ status: event.target.value })
             }
           >
-            <option value="">Change status</option>
+            <option value="">
+              {!canBulkChangeStatus
+                ? `Change status (${bulkStatusReason})`
+                : "Change status"}
+            </option>
             <option>Backlog</option>
             <option>Todo</option>
             <option>In Progress</option>

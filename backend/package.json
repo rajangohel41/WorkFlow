@@ -6,9 +6,16 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "test": "node tests/qa_security_audit.test.js"
+    "seed": "node -e \"import('./src/db/seed.js').then(m => m.seedDatabase().then(() => process.exit(0))).catch(e => { console.error(e); process.exit(1) })\"",
+    "db:seed": "node src/db/seed.js",
+    "db:cleanup": "node src/db/cleanup.js --dry-run",
+    "db:reset": "node src/db/cleanup.js --confirm",
+    "test": "node tests/run.js"
   },
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "@vercel/blob": "^2.4.0",
+    "argon2": "^0.45.1",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -16,10 +23,12 @@
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.1",
     "helmet": "^8.1.0",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.0",
-    "multer": "^2.0.2",
+    "multer": "^2.5.0",
     "socket.io": "^4.8.1",
-    "zod": "^4.6.5"
+    "socket.io-client": "^4.8.4",
+    "zod": "^4.6.7"
   }
 }

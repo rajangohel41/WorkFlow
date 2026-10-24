@@ -1,19 +1,20 @@
 import { Router } from "express"
+import crypto from "node:crypto"
 import { User, hashPassword } from "../models/User.js"
 import {
   Organization,
   OrganizationMember,
 } from "../models/Organization.js"
 import {
-  randomCode,
   randomToken,
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
 } from "../utils/tokens.js"
-import { slugify } from "../utils/helpers.js"
+import { isStrongPassword, slugify } from "../utils/helpers.js"
 import { requireAuth } from "../middleware/auth.js"
 import { serializeUser } from "../services/serializers.js"
+import { env } from "../config/env.js"
 
 const router = Router()
 
@@ -32,35 +33,78 @@ function setAuthCookies(res, userId, tokenVersion = 0) {
     ...cookieOptions,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   })
+  return { accessToken, refreshToken }
 }
 
 router.post("/register", async (req, res, next) => {
   try {
     const { name, email, password } = req.body
-    if (!name || !email || !password || password.length < 8) {
-      return res.status(422).json({ message: "Invalid registration data" })
+    if (!name || !email || !password || !isStrongPassword(password)) {
+      return res.status(422).json({
+        message:
+          "Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+      })
     }
-    const existing = await User.findOne({ email: email.toLowerCase() })
+
+    const normalizedEmail = String(email).trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(422).json({ message: "A valid email address is required" })
+    }
+
+    const existing = await User.findOne({ email: normalizedEmail })
     if (existing) {
-      return res.status(409).json({ message: "Email already registered" })
+      return res.status(409).json({ message: "An account with this email already exists." })
     }
-    const verificationCode = randomCode()
+
     const user = await User.create({
-      name,
-      email: email.toLowerCase(),
+      name: String(name).trim(),
+      email: normalizedEmail,
       passwordHash: await hashPassword(password),
-      verificationCode,
-      verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
       tokenVersion: 0,
     })
-    const isDev = process.env.NODE_ENV !== "production"
-    setAuthCookies(res, user._id.toString(), user.tokenVersion)
+
+    let organization
+    try {
+      const baseName = `${user.name.split(" ")[0] || "My"}'s Workspace`
+      let slug = slugify(baseName) || "workspace"
+      const existingOrg = await Organization.findOne({ slug })
+      if (existingOrg) slug = `${slug}-${Date.now()}`
+      organization = await Organization.create({
+        name: baseName,
+        slug,
+        ownerId: user._id,
+      })
+      await OrganizationMember.create({
+        organizationId: organization._id,
+        userId: user._id,
+        role: "Owner",
+        status: "Active",
+      })
+      res.cookie("organizationId", organization._id.toString(), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      })
+    } catch (orgError) {
+      await User.findByIdAndDelete(user._id)
+      throw orgError
+    }
+
+    const { accessToken, refreshToken } = setAuthCookies(res, user._id.toString(), user.tokenVersion)
     res.status(201).json({
       user: serializeUser(user),
-      verificationRequired: true,
-      ...(isDev && { devVerificationCode: verificationCode }),
+      organization: {
+        id: organization._id.toString(),
+        name: organization.name,
+        slug: organization.slug,
+        plan: organization.plan,
+      },
+      accessToken,
+      refreshToken,
     })
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: "An account with this email already exists." })
+    }
     next(error)
   }
 })
@@ -77,14 +121,34 @@ router.post("/login", async (req, res, next) => {
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid email or password" })
     }
-    setAuthCookies(res, user._id.toString(), user.tokenVersion || 0)
-    res.json({ user: serializeUser(user) })
+    const { accessToken, refreshToken } = setAuthCookies(res, user._id.toString(), user.tokenVersion || 0)
+    res.json({
+      user: serializeUser(user),
+      accessToken,
+      refreshToken,
+    })
   } catch (error) {
     next(error)
   }
 })
 
-router.post("/logout", (_req, res) => {
+router.post("/logout", (req, res) => {
+  const token = req.cookies?.accessToken || req.headers.authorization?.replace("Bearer ", "")
+  if (token) {
+    try {
+      const payload = verifyAccessToken(token)
+      const io = req.app.get("io")
+      if (io && payload?.sub) {
+        const userRoom = io.sockets.adapter.rooms.get(`user:${payload.sub}`)
+        if (userRoom) {
+          for (const socketId of Array.from(userRoom)) {
+            const s = io.sockets.sockets.get(socketId)
+            if (s) s.disconnect(true)
+          }
+        }
+      }
+    } catch {}
+  }
   res.clearCookie("accessToken", cookieOptions)
   res.clearCookie("refreshToken", cookieOptions)
   res.clearCookie("organizationId", cookieOptions)
@@ -94,6 +158,16 @@ router.post("/logout", (_req, res) => {
 router.post("/logout-all", requireAuth, async (req, res, next) => {
   try {
     await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } })
+    const io = req.app.get("io")
+    if (io) {
+      const userRoom = io.sockets.adapter.rooms.get(`user:${req.user._id.toString()}`)
+      if (userRoom) {
+        for (const socketId of Array.from(userRoom)) {
+          const s = io.sockets.sockets.get(socketId)
+          if (s) s.disconnect(true)
+        }
+      }
+    }
     res.clearCookie("accessToken", cookieOptions)
     res.clearCookie("refreshToken", cookieOptions)
     res.clearCookie("organizationId", cookieOptions)
@@ -127,7 +201,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 
 router.post("/refresh", async (req, res, next) => {
   try {
-    const token = req.cookies?.refreshToken
+    const token = req.cookies?.refreshToken || req.body?.refreshToken
     if (!token) return res.status(401).json({ message: "Refresh required" })
     const payload = verifyRefreshToken(token)
     const user = await User.findById(payload.sub)
@@ -137,68 +211,51 @@ router.post("/refresh", async (req, res, next) => {
       res.clearCookie("refreshToken", cookieOptions)
       return res.status(401).json({ message: "Session revoked" })
     }
-    setAuthCookies(res, user._id.toString(), user.tokenVersion || 0)
-    res.json({ success: true })
+    const { accessToken, refreshToken } = setAuthCookies(res, user._id.toString(), user.tokenVersion || 0)
+    res.json({ success: true, accessToken, refreshToken })
   } catch {
     res.status(401).json({ message: "Refresh failed" })
   }
 })
 
-router.post("/verify-email", requireAuth, async (req, res, next) => {
-  try {
-    const { code } = req.body
-    const user = await User.findById(req.user._id).select(
-      "+verificationCode +verificationExpires",
-    )
-    if (
-      !user.verificationCode ||
-      user.verificationCode !== code ||
-      user.verificationExpires < new Date()
-    ) {
-      return res.status(422).json({ message: "Invalid verification code" })
-    }
-    user.emailVerified = true
-    user.verificationCode = undefined
-    user.verificationExpires = undefined
-    await user.save()
-    res.json({ user: serializeUser(user) })
-  } catch (error) {
-    next(error)
-  }
-})
 
-router.post("/resend-verification", requireAuth, async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user._id).select(
-      "+verificationCode +verificationExpires",
-    )
-    user.verificationCode = randomCode()
-    user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000)
-    await user.save()
-    const isDev = process.env.NODE_ENV !== "production"
-    res.json({
-      success: true,
-      ...(isDev && { devVerificationCode: user.verificationCode }),
-    })
-  } catch (error) {
-    next(error)
+function isRecoveryAllowed(req) {
+  if (req && process.env.NODE_ENV === "test" && req.headers["x-test-disable-recovery"] === "true") {
+    return false
   }
-})
+  if (env.enablePasswordRecovery) return true
+  if (process.env.NODE_ENV === "production" || process.env.ENABLE_PASSWORD_RECOVERY === "false") {
+    return false
+  }
+  return process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development"
+}
+
+const RECOVERY_DISABLED_MESSAGE =
+  "Self-service password recovery is unavailable because automated email delivery is not configured. If you are signed in, you can update your password under Settings > Security. Otherwise, contact system support."
 
 router.post("/forgot-password", async (req, res, next) => {
   try {
+    if (!isRecoveryAllowed(req)) {
+      return res.status(403).json({ message: RECOVERY_DISABLED_MESSAGE })
+    }
     const { email } = req.body
-    const user = await User.findOne({ email: email?.toLowerCase() }).select(
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Valid email is required" })
+    }
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
       "+resetToken +resetExpires",
     )
     if (user) {
-      user.resetToken = randomToken()
+      const rawToken = randomToken()
+      user.resetToken = crypto.createHash("sha256").update(rawToken).digest("hex")
       user.resetExpires = new Date(Date.now() + 60 * 60 * 1000)
       await user.save()
-      const isDev = process.env.NODE_ENV !== "production"
+      const isDev =
+        (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") &&
+        process.env.NODE_ENV !== "production"
       res.json({
         success: true,
-        ...(isDev && { devResetToken: user.resetToken }),
+        ...(isDev && { devResetToken: rawToken }),
       })
       return
     }
@@ -210,12 +267,22 @@ router.post("/forgot-password", async (req, res, next) => {
 
 router.post("/reset-password", async (req, res, next) => {
   try {
-    const { token, password } = req.body
-    if (!password || password.length < 8) {
-      return res.status(422).json({ message: "Password must be at least 8 characters" })
+    if (!isRecoveryAllowed(req)) {
+      return res.status(403).json({ message: RECOVERY_DISABLED_MESSAGE })
     }
+    const { token, password } = req.body
+    if (!token || typeof token !== "string") {
+      return res.status(422).json({ message: "Reset token is required" })
+    }
+    if (!isStrongPassword(password)) {
+      return res.status(422).json({
+        message:
+          "Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+      })
+    }
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex")
     const user = await User.findOne({
-      resetToken: token,
+      resetToken: hashedToken,
       resetExpires: { $gt: new Date() },
     }).select("+resetToken +resetExpires +passwordHash")
     if (!user) {
@@ -226,6 +293,19 @@ router.post("/reset-password", async (req, res, next) => {
     user.resetExpires = undefined
     user.tokenVersion = (user.tokenVersion || 0) + 1
     await user.save()
+
+    // Sever all active sockets across devices
+    const io = req.app.get("io")
+    if (io) {
+      const userRoom = io.sockets.adapter.rooms.get(`user:${user._id.toString()}`)
+      if (userRoom) {
+        for (const socketId of Array.from(userRoom)) {
+          const s = io.sockets.sockets.get(socketId)
+          if (s) s.disconnect(true)
+        }
+      }
+    }
+
     setAuthCookies(res, user._id.toString(), user.tokenVersion)
     res.json({ success: true })
   } catch (error) {
@@ -240,8 +320,11 @@ router.post("/change-password", requireAuth, async (req, res, next) => {
     if (!(await user.comparePassword(currentPassword))) {
       return res.status(403).json({ message: "Current password is incorrect" })
     }
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(422).json({ message: "Password must be at least 8 characters" })
+    if (!isStrongPassword(newPassword)) {
+      return res.status(422).json({
+        message:
+          "Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+      })
     }
     user.passwordHash = await hashPassword(newPassword)
     user.tokenVersion = (user.tokenVersion || 0) + 1

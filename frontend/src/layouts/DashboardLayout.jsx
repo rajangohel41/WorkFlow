@@ -1,5 +1,5 @@
-import { useEffect } from "react"
-import { NavLink, Outlet, useLocation } from "react-router-dom"
+import { useEffect, useRef } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Activity,
   BarChart3,
@@ -23,25 +23,25 @@ import {
   UsersRound,
   Workflow,
   X,
-} from "lucide-react"
-import { useAppStore } from "../store/useAppStore.js"
-import { Avatar, Button, IconButton } from "../components/ui/index.jsx"
+} from "lucide-react";
+import { useAppStore } from "../store/useAppStore.js";
+import { Avatar, Button, IconButton } from "../components/ui/index.jsx";
 import {
   useMe,
   useNotifications,
   useOrganizations,
   useWorkflowMutations,
-} from "../hooks/useWorkflowQueries.js"
-import { useSocket } from "../hooks/useSocket.js"
+} from "../hooks/useWorkflowQueries.js";
+import { useSocket } from "../hooks/useSocket.js";
 import {
   CommandMenu,
   CreateMenu,
   CreateModal,
   NotificationPanel,
   UserMenu,
-} from "../components/common/Overlays.jsx"
-import TaskDrawer from "../components/common/TaskDrawer.jsx"
-import ToastContainer from "../components/common/ToastContainer.jsx"
+} from "../components/common/Overlays.jsx";
+import TaskDrawer from "../components/common/TaskDrawer.jsx";
+import ToastContainer from "../components/common/ToastContainer.jsx";
 
 const mainNav = [
   { label: "Overview", icon: LayoutDashboard, to: "/dashboard" },
@@ -50,14 +50,16 @@ const mainNav = [
   { label: "Calendar", icon: CalendarDays, to: "/calendar" },
   { label: "Team", icon: UsersRound, to: "/team" },
   { label: "Analytics", icon: BarChart3, to: "/analytics" },
-]
+];
 const workspaceNav = [
   { label: "My Tasks", icon: CheckSquare2, to: "/tasks?view=mine" },
   { label: "Favorites", icon: Heart, to: "/projects?view=favorites" },
   { label: "Recent", icon: Clock3, to: "/projects?view=recent" },
-]
+];
 
 function Sidebar() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
   const {
     collapsed,
     mobileNav,
@@ -69,9 +71,41 @@ function Sidebar() {
     setCreateModal,
     profile,
     organizationId,
-  } = useAppStore()
-  const { data: orgData } = useOrganizations()
-  const { switchOrganization } = useWorkflowMutations()
+  } = useAppStore();
+  const { data: orgData } = useOrganizations();
+  const { switchOrganization } = useWorkflowMutations();
+  const isMainActive = (to) => {
+    if (to === "/projects") {
+      return (
+        location.pathname.startsWith("/projects") &&
+        !["favorites", "recent"].includes(searchParams.get("view"))
+      );
+    }
+    if (to === "/tasks") {
+      return (
+        location.pathname.startsWith("/tasks") &&
+        searchParams.get("view") !== "mine"
+      );
+    }
+    return location.pathname === to || location.pathname.startsWith(`${to}/`);
+  };
+  const isWorkspaceActive = (to) => {
+    if (to === "/projects?view=favorites") {
+      return (
+        location.pathname === "/projects" &&
+        searchParams.get("view") === "favorites"
+      );
+    }
+    if (to === "/projects?view=recent") {
+      return (
+        location.pathname === "/projects" &&
+        searchParams.get("view") === "recent"
+      );
+    }
+    return (
+      location.pathname === "/tasks" && searchParams.get("view") === "mine"
+    );
+  };
   return (
     <aside
       className={`sidebar ${collapsed ? "collapsed" : ""} ${
@@ -131,14 +165,24 @@ function Sidebar() {
       <nav>
         <p>MAIN</p>
         {mainNav.map(({ label, icon: Icon, to }) => (
-          <NavLink key={label} to={to} onClick={() => setMobileNav(false)}>
+          <NavLink
+            key={label}
+            to={to}
+            className={() => (isMainActive(to) ? "active" : "")}
+            onClick={() => setMobileNav(false)}
+          >
             <Icon size={18} />
             <span>{label}</span>
           </NavLink>
         ))}
         <p className="workspace-label">WORKSPACE</p>
         {workspaceNav.map(({ label, icon: Icon, to }) => (
-          <NavLink key={label} to={to} onClick={() => setMobileNav(false)}>
+          <NavLink
+            key={label}
+            to={to}
+            className={() => (isWorkspaceActive(to) ? "active" : "")}
+            onClick={() => setMobileNav(false)}
+          >
             <Icon size={18} />
             <span>{label}</span>
           </NavLink>
@@ -149,7 +193,7 @@ function Sidebar() {
           <CircleHelp size={18} />
           <span>Help & Support</span>
         </a>
-        <NavLink to="/settings">
+        <NavLink to="/settings" end>
           <Settings size={18} />
           <span>Settings</span>
         </NavLink>
@@ -181,13 +225,15 @@ function Sidebar() {
         {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
       </button>
     </aside>
-  )
+  );
 }
 
 function Header() {
-  const location = useLocation()
+  const location = useLocation();
+  const notificationWrapRef = useRef(null);
   const {
     dark,
+    workspace,
     toggleTheme,
     setMobileNav,
     setNotifications,
@@ -195,12 +241,22 @@ function Header() {
     setCommandOpen,
     setCreateMenu,
     createMenu,
-  } = useAppStore()
-  const { data: notificationData } = useNotifications()
-  const notifications = notificationData?.notifications || []
+  } = useAppStore();
+  const { data: notificationData } = useNotifications();
+  const notifications = notificationData?.notifications || [];
+  useEffect(() => {
+    if (!notificationsOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (!notificationWrapRef.current?.contains(event.target)) {
+        setNotifications(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [notificationsOpen, setNotifications]);
   const page =
     mainNav.find((item) => location.pathname.startsWith(item.to))?.label ||
-    (location.pathname.startsWith("/settings") ? "Settings" : "Project")
+    (location.pathname.startsWith("/settings") ? "Settings" : "Project");
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -212,7 +268,7 @@ function Header() {
           <Menu size={20} />
         </IconButton>
         <div className="breadcrumb">
-          <span>{useAppStore.getState().workspace || "Workspace"}</span>
+          <span>{workspace || "Workspace"}</span>
           <i>/</i>
           <strong>{page}</strong>
         </div>
@@ -236,37 +292,44 @@ function Header() {
         <IconButton label="Toggle theme" onClick={toggleTheme}>
           {dark ? <Sun size={18} /> : <Moon size={18} />}
         </IconButton>
-        <div className="notification-wrap">
+        <div className="notification-wrap" ref={notificationWrapRef}>
           <IconButton
             label="Notifications"
             onClick={() => setNotifications(!notificationsOpen)}
           >
             <Bell size={18} />
-            {notifications.some((item) => item.unread) && <i className="unread-dot" />}
+            {(() => {
+              const unread = notifications.filter((item) => item.unread).length;
+              return unread > 0 ? (
+                <span className="unread-badge">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              ) : null;
+            })()}
           </IconButton>
           <NotificationPanel />
         </div>
         <UserMenu />
       </div>
     </header>
-  )
+  );
 }
 
 export default function DashboardLayout() {
-  useSocket()
+  useSocket();
   useEffect(() => {
     const close = (event) => {
       if (event.key === "Escape") {
-        useAppStore.getState().setNotifications(false)
-        useAppStore.getState().setTask(null)
-        useAppStore.getState().setCreateModal(null)
-        useAppStore.getState().setCreateMenu(false)
-        useAppStore.getState().setWorkspaceMenu(false)
+        useAppStore.getState().setNotifications(false);
+        useAppStore.getState().setTask(null);
+        useAppStore.getState().setCreateModal(null);
+        useAppStore.getState().setCreateMenu(false);
+        useAppStore.getState().setWorkspaceMenu(false);
       }
-    }
-    window.addEventListener("keydown", close)
-    return () => window.removeEventListener("keydown", close)
-  }, [])
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, []);
   return (
     <div className="app-shell">
       <Sidebar />
@@ -281,5 +344,5 @@ export default function DashboardLayout() {
       <TaskDrawer />
       <ToastContainer />
     </div>
-  )
+  );
 }

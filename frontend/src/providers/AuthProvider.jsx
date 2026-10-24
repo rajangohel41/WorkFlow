@@ -1,85 +1,100 @@
-import { useEffect } from "react"
-import { Navigate, Outlet, useLocation } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
-import { setOrganizationId, setUnauthorizedHandler } from "../api/client.js"
-import { useAppStore } from "../store/useAppStore.js"
-import { useMe } from "../hooks/useWorkflowQueries.js"
-import { queryKeys } from "../hooks/queryKeys.js"
+import { useEffect } from "react";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import {
+  setOrganizationId,
+  setUnauthorizedHandler,
+  setAuthToken,
+} from "../api/client.js";
+import { useAppStore } from "../store/useAppStore.js";
+import { useMe } from "../hooks/useWorkflowQueries.js";
+import ErrorPage from "../pages/ErrorPage.jsx";
 
 export function AuthProvider({ children }) {
-  const queryClient = useQueryClient()
-  const location = useLocation()
-  const setAuth = useAppStore((s) => s.setAuth)
-  const clearAuth = useAppStore((s) => s.clearAuth)
-  const setOrganization = useAppStore((s) => s.setOrganization)
-  const organizationId = useAppStore((s) => s.organizationId)
+  const clearAuth = useAppStore((s) => s.clearAuth);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      clearAuth()
-      queryClient.clear()
-    })
-  }, [clearAuth, queryClient])
+      setAuthToken(null);
+      clearAuth();
+    });
+  }, [clearAuth]);
 
-  const { data, isLoading, isError } = useMe(
-    !location.pathname.startsWith("/login") &&
-      !location.pathname.startsWith("/signup") &&
-      !location.pathname.startsWith("/forgot-password") &&
-      !location.pathname.startsWith("/reset-password") &&
-      !location.pathname.startsWith("/verify-email"),
-  )
-
-  useEffect(() => {
-    if (data?.user) {
-      setAuth(data.user)
-      const org = data.organizations?.[0]
-      if (org && !organizationId) {
-        setOrganizationId(org.id)
-        setOrganization(org)
-      } else if (organizationId) {
-        setOrganizationId(organizationId)
-      }
-    }
-  }, [data, setAuth, setOrganization, organizationId])
-
-  return children
+  return children;
 }
 
 export function ProtectedRoute() {
-  const { data, isLoading, isError } = useMe()
-  const location = useLocation()
+  const { data, isLoading, isError, error } = useMe();
+  const location = useLocation();
+  const organizationId = useAppStore((state) => state.organizationId);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (!data?.user) return;
+    const store = useAppStore.getState();
+    if (store.user?.id !== data.user.id) {
+      store.setAuth(data.user);
+    }
+    const currentOrgId = store.organizationId;
+    const activeOrg =
+      data.organizations?.find((o) => o.id === currentOrgId) ||
+      data.organizations?.[0];
+    if (
+      activeOrg &&
+      (store.organizationId !== activeOrg.id ||
+        store.organization?.id !== activeOrg.id)
+    ) {
+      setOrganizationId(activeOrg.id);
+      store.setOrganization(activeOrg);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const activeOrganization =
+    data?.organizations?.find(
+      (organization) => organization.id === organizationId,
+    ) || data?.organizations?.[0];
+  const organizationReady =
+    !data?.organizations?.length || organizationId === activeOrganization?.id;
+
+  if (isLoading || !organizationReady) {
     return (
       <div className="auth-loading">
         <p>Loading workspace…</p>
       </div>
-    )
+    );
   }
 
-  if (isError || !data?.user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (isError) {
+    if (error?.status === 401 || !error?.status) {
+      return (
+        <Navigate to="/login" replace state={{ from: location.pathname }} />
+      );
+    }
+    return <ErrorPage type="network" />;
   }
 
-  if (!data.user.emailVerified && location.pathname !== "/verify-email") {
-    return <Navigate to="/verify-email" replace />
+  if (!data?.user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (
-    data.organizations?.length === 0 &&
-    location.pathname !== "/onboarding"
-  ) {
-    return <Navigate to="/onboarding" replace />
+  if (data.organizations?.length === 0 && location.pathname !== "/onboarding") {
+    return <Navigate to="/onboarding" replace />;
   }
 
-  return <Outlet />
+  if (data.organizations?.length > 0 && location.pathname === "/onboarding") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Outlet />;
 }
 
 export function GuestRoute() {
-  const { data, isLoading } = useMe()
-  if (isLoading) return null
-  if (data?.user?.emailVerified && data.organizations?.length) {
-    return <Navigate to="/dashboard" replace />
+  const { data, isLoading } = useMe();
+  if (isLoading) return null;
+  if (data?.user) {
+    if (!data.organizations?.length) {
+      return <Navigate to="/onboarding" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
   }
-  return <Outlet />
+  return <Outlet />;
 }

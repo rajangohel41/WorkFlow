@@ -5,12 +5,18 @@ dist/
 build/
 .cache/
 .env
+.env.*
 .env.local
 frontend/.env
+frontend/.env.*
 backend/.env
-!.env.example
+backend/.env.*
 !frontend/.env.example
 !backend/.env.example
+.DS_Store
+Thumbs.db
+coverage/
+.nyc_output/
 .vite/
 vite.config.*.timestamp-*
 *.tsbuildinfo
@@ -21,5 +27,7 @@ logs/
 .tmp-*
 backend/uploads/*
 !backend/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
 /.plugins/
 /.opencode-skills/

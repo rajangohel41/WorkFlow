@@ -25,7 +25,7 @@ router.patch("/profile", async (req, res, next) => {
 
 router.patch("/preferences", async (req, res, next) => {
   try {
-    const allowed = ["email", "assignments", "mentions", "projectUpdates", "weekly"]
+    const allowed = ["assignments", "mentions", "projectUpdates"]
     for (const key of allowed) {
       if (typeof req.body[key] === "boolean") {
         req.user.preferences[key] = req.body[key]

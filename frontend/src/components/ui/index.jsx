@@ -37,13 +37,17 @@ export function Badge({ children, tone = "neutral" }) {
 }
 
 export function Avatar({ person, size = "md" }) {
+  const initials = person?.initials ||
+    (person?.name
+      ? person.name.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase()
+      : "?")
   return (
     <span
       className={`avatar avatar-${size}`}
       style={{ background: person?.color || "#6366F1" }}
       title={person?.name}
     >
-      {person?.initials || "AK"}
+      {initials}
     </span>
   )
 }

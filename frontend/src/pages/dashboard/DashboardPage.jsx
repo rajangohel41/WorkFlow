@@ -1,137 +1,153 @@
 import {
-  ArrowDownRight,
   ArrowUpRight,
   BriefcaseBusiness,
-  CalendarRange,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   Plus,
   UsersRound,
-} from "lucide-react"
-import { useState } from "react"
-import { Link } from "react-router-dom"
-import { useAppStore } from "../../store/useAppStore.js"
+} from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useAppStore } from "../../store/useAppStore.js";
 import {
   useDashboardStats,
   useProjects,
-  useTasks,
   useMembers,
   useAnalyticsOverview,
-} from "../../hooks/useWorkflowQueries.js"
+} from "../../hooks/useWorkflowQueries.js";
 import {
   Avatar,
   Button,
   Card,
-  IconButton,
   PageHeader,
   ProgressBar,
-} from "../../components/ui/index.jsx"
+} from "../../components/ui/index.jsx";
 
-function CompletionChart({ dataPoints }) {
-  const data =
-    dataPoints && dataPoints.length === 12
-      ? dataPoints
-      : [34, 48, 43, 60, 54, 72, 79, 68, 86, 91, 84, 96]
-  const points = data
-    .map((value, index) => `${index * 9.09},${100 - value}`)
-    .join(" ")
+function CompletionChart({
+  dataPoints = [],
+  labels = [],
+  loading,
+  error,
+  onRetry,
+}) {
+  if (loading)
+    return <div className="chart-empty">Loading completion data...</div>;
+  if (error)
+    return (
+      <div className="chart-empty">
+        <strong>Unable to load completion data.</strong>
+        <button onClick={onRetry}>Retry</button>
+      </div>
+    );
+  if (!dataPoints.length || dataPoints.every((value) => value === 0))
+    return (
+      <div className="chart-empty">
+        <strong>No completed tasks yet</strong>
+        <span>Complete a task to start seeing delivery trends.</span>
+      </div>
+    );
+  const max = Math.max(...dataPoints);
+  const labelStep = Math.max(1, Math.ceil(labels.length / 6));
   return (
-    <div className="chart-wrap">
-      <div className="y-labels">
-        <span>100</span>
-        <span>75</span>
-        <span>50</span>
-        <span>25</span>
+    <div
+      className="completion-chart"
+      role="img"
+      aria-label="Completed task counts per date"
+    >
+      <div className="completion-scale">
+        <span>{max}</span>
+        <span>{Math.ceil(max / 2)}</span>
         <span>0</span>
       </div>
-      <div className="line-chart">
-        <span className="grid-line g1" />
-        <span className="grid-line g2" />
-        <span className="grid-line g3" />
-        <span className="grid-line g4" />
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Task completion has increased throughout the quarter"
+      <div className="completion-plot">
+        <div className="completion-grid-line top" />
+        <div className="completion-grid-line middle" />
+        <div className="completion-grid-line bottom" />
+        <div
+          className="completion-bars"
+          style={{ "--bar-count": dataPoints.length }}
         >
-          <defs>
-            <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#6366F1" stopOpacity=".24" />
-              <stop offset="100%" stopColor="#6366F1" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <polygon points={`0,100 ${points} 100,100`} fill="url(#area)" />
-          <polyline
-            points={points}
-            fill="none"
-            stroke="#6366F1"
-            strokeWidth="2"
-            vectorEffect="non-scaling-stroke"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <div className="x-labels">
-          <span>Jul 1</span>
-          <span>Jul 15</span>
-          <span>Aug 1</span>
-          <span>Aug 15</span>
-          <span>Sep 1</span>
-          <span>Sep 15</span>
+          {dataPoints.map((value, index) => (
+            <div className="completion-bar-cell" key={labels[index] || index}>
+              <span
+                className="completion-bar"
+                style={{
+                  height: `${value ? Math.max(4, (value / max) * 100) : 0}%`,
+                }}
+                title={`${labels[index] || "Date"}: ${value} completed`}
+                aria-label={`${labels[index] || "Date"}: ${value} completed`}
+              />
+              {index % labelStep === 0 && <small>{labels[index]}</small>}
+            </div>
+          ))}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function DashboardPage() {
-  const [range, setRange] = useState("Last 30 days")
-  const [interval, setInterval] = useState("Weekly")
-  const user = useAppStore((state) => state.user)
+  const [range, setRange] = useState("Last 30 days");
+  const user = useAppStore((state) => state.user);
 
-  const { data: dashboardData } = useDashboardStats()
-  const { data: projectsData } = useProjects()
-  const { data: tasksData } = useTasks()
-  const { data: membersData } = useMembers()
-  const { data: analyticsData } = useAnalyticsOverview()
+  const {
+    data: dashboardData,
+    isLoading: dashboardLoading,
+    isError: dashboardError,
+    refetch: refetchDashboard,
+  } = useDashboardStats(range);
+  const { data: projectsData } = useProjects();
+  const { data: membersData } = useMembers();
+  const {
+    data: analyticsData,
+    isLoading: analyticsLoading,
+    isError: analyticsError,
+    refetch: refetchAnalytics,
+  } = useAnalyticsOverview(range);
 
-  const projects = projectsData?.projects || []
-  const tasks = tasksData?.tasks || []
-  const members = membersData?.members || []
-  const activity = dashboardData?.activity || []
+  const projects = projectsData?.projects || [];
+  const members = membersData?.members || [];
+  const activity = dashboardData?.activity || [];
 
   const stats = dashboardData?.stats || {
     activeProjects: projects.filter((p) => !p.archived).length,
-    openTasks: tasks.filter((t) => t.status !== "Done").length,
-    completedTasks: tasks.filter((t) => t.status === "Done").length,
+    openTasks: 0,
+    scheduledTasks: 0,
+    completedTasks: 0,
+    previousCompletedTasks: 0,
     teamMembers: members.length,
-  }
+  };
+  const completionChange =
+    stats.previousCompletedTasks > 0
+      ? Math.round(
+          ((stats.completedTasks - stats.previousCompletedTasks) /
+            stats.previousCompletedTasks) *
+            100,
+        )
+      : null;
 
   const displayKpis = [
     {
       label: "Active Projects",
       value: stats.activeProjects,
-      metric: "+3 this month",
+      metric: `${stats.activeProjects} active project${stats.activeProjects === 1 ? "" : "s"}`,
       icon: BriefcaseBusiness,
       tone: "indigo",
-      trend: "up",
     },
     {
       label: "Open Tasks",
       value: stats.openTasks,
-      metric: `${tasks.filter((t) => t.due && t.due !== "Not set").length} scheduled`,
+      metric: `${stats.scheduledTasks || 0} scheduled`,
       icon: Clock3,
       tone: "blue",
     },
     {
       label: "Completed",
       value: stats.completedTasks,
-      metric: `${analyticsData?.productivity || 0}% completion rate`,
+      metric: `${stats.completedTasks} completed in period`,
       icon: CheckCircle2,
       tone: "green",
-      trend: "up",
+      trend: completionChange,
     },
     {
       label: "Team Members",
@@ -140,9 +156,9 @@ export default function DashboardPage() {
       icon: UsersRound,
       tone: "amber",
     },
-  ]
+  ];
 
-  const firstName = user?.name ? user.name.split(" ")[0] : "there"
+  const firstName = user?.name ? user.name.split(" ")[0] : "there";
 
   return (
     <div className="page dashboard-page">
@@ -160,6 +176,8 @@ export default function DashboardPage() {
               <option>Last 7 days</option>
               <option>Last 30 days</option>
               <option>Last 90 days</option>
+              <option>This month</option>
+              <option>Previous month</option>
               <option>This year</option>
             </select>
             <Button
@@ -182,10 +200,25 @@ export default function DashboardPage() {
               </div>
               <p>{label}</p>
               <div className="kpi-value">
-                <strong>{value}</strong>
-                {trend && (
-                  <span className="positive">
-                    <ArrowUpRight size={14} /> 8.2%
+                <strong>{dashboardLoading ? "..." : value}</strong>
+                {trend !== undefined && (
+                  <span
+                    className={
+                      trend === null
+                        ? "neutral-change"
+                        : trend >= 0
+                          ? "positive"
+                          : "negative"
+                    }
+                  >
+                    {trend === null ? (
+                      "No previous data"
+                    ) : (
+                      <>
+                        <ArrowUpRight size={14} /> {trend >= 0 ? "+" : ""}
+                        {trend}%
+                      </>
+                    )}
                   </span>
                 )}
               </div>
@@ -194,30 +227,33 @@ export default function DashboardPage() {
           ),
         )}
       </div>
+      {dashboardError && (
+        <Card className="dashboard-query-error">
+          <span>Unable to load dashboard metrics.</span>
+          <button onClick={() => refetchDashboard()}>Retry</button>
+        </Card>
+      )}
       <div className="dashboard-grid">
         <Card className="completion-card">
           <div className="card-heading">
             <div>
               <h2>Task Completion</h2>
-              <p>Tasks completed over the last 12 weeks</p>
+              <p>Completed tasks · {range}</p>
             </div>
             <div className="legend">
               <span>
                 <i />
                 Completed
               </span>
-              <select
-                className="chart-select"
-                value={interval}
-                onChange={(event) => setInterval(event.target.value)}
-                aria-label="Chart interval"
-              >
-                <option>Weekly</option>
-                <option>Monthly</option>
-              </select>
             </div>
           </div>
-          <CompletionChart dataPoints={analyticsData?.completion} />
+          <CompletionChart
+            dataPoints={analyticsData?.completion}
+            labels={analyticsData?.completionLabels}
+            loading={analyticsLoading || dashboardLoading}
+            error={analyticsError}
+            onRetry={refetchAnalytics}
+          />
         </Card>
         <Card className="progress-card">
           <div className="card-heading">
@@ -248,11 +284,16 @@ export default function DashboardPage() {
                     </span>
                     <b>{project.progress || 0}%</b>
                   </div>
-                  <ProgressBar value={project.progress || 0} color={project.color} />
+                  <ProgressBar
+                    value={project.progress || 0}
+                    color={project.color}
+                  />
                 </div>
               ))
             ) : (
-              <p className="empty-hint">No projects yet. Create one to get started.</p>
+              <p className="empty-hint">
+                No projects yet. Create one to get started.
+              </p>
             )}
           </div>
           <Link to="/projects" className="card-link">
@@ -270,35 +311,44 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="workload-list">
-            {members.slice(0, 4).map((person, index) => {
-              const assignedCount = tasks.filter(
-                (t) =>
-                  t.assignee?.email === person.email ||
-                  t.assignee?.name === person.name,
-              ).length
-              const pct = Math.min(
-                100,
-                Math.round(
-                  (assignedCount / Math.max(1, tasks.length)) * 100,
-                ) + (index === 0 ? 30 : 15),
-              )
-              return (
-                <div key={person.email || person.name}>
-                  <Avatar person={person} size="sm" />
-                  <span>
-                    <strong>{person.name}</strong>
-                    <small>{assignedCount} tasks assigned</small>
-                  </span>
-                  <div>
-                    <ProgressBar
-                      value={pct}
-                      color={pct > 75 ? "#F59E0B" : "#6366F1"}
-                    />
-                    <small>{pct}%</small>
-                  </div>
-                </div>
-              )
-            })}
+            {members.filter((person) => person.status !== "Pending").length ? (
+              members
+                .filter((person) => person.status !== "Pending")
+                .slice(0, 4)
+                .map((person) => {
+                  const workload = dashboardData?.workloads?.find(
+                    (item) => item.userId === person.id,
+                  ) || { assigned: 0, completed: 0 };
+                  const assignedCount = workload.assigned;
+                  const completedCount = workload.completed;
+                  return (
+                    <div key={person.email || person.name}>
+                      <Avatar person={person} size="sm" />
+                      <span>
+                        <strong>{person.name}</strong>
+                        <small>{assignedCount} tasks assigned</small>
+                      </span>
+                      <div>
+                        <ProgressBar
+                          value={
+                            assignedCount
+                              ? Math.round(
+                                  (completedCount / assignedCount) * 100,
+                                )
+                              : 0
+                          }
+                          color="#6366F1"
+                        />
+                        <small>
+                          {completedCount}/{assignedCount} done
+                        </small>
+                      </div>
+                    </div>
+                  );
+                })
+            ) : (
+              <p className="empty-hint">No active team members yet.</p>
+            )}
           </div>
         </Card>
         <Card className="activity-card">
@@ -316,7 +366,10 @@ export default function DashboardPage() {
               activity.map((item, index) => (
                 <div key={item.id || index}>
                   <div className="activity-avatar">
-                    <Avatar person={item.person || { name: "User" }} size="sm" />
+                    <Avatar
+                      person={item.person || { name: "User" }}
+                      size="sm"
+                    />
                     <i />
                   </div>
                   <p>
@@ -333,5 +386,5 @@ export default function DashboardPage() {
         </Card>
       </div>
     </div>
-  )
+  );
 }

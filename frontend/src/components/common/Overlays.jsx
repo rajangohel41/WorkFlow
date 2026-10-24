@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   CheckCircle2,
@@ -12,8 +13,8 @@ import {
   Settings,
   UserRound,
   X,
-} from "lucide-react"
-import { useNavigate } from "react-router-dom"
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   useCurrentUser,
   useMembers,
@@ -21,36 +22,79 @@ import {
   useProjects,
   useTasks,
   useWorkflowMutations,
-} from "../../hooks/useWorkflowQueries.js"
-import { authService } from "../../services/authService.js"
-import { useAppStore } from "../../store/useAppStore.js"
-import { Avatar, Button, Field, IconButton, Modal } from "../ui/index.jsx"
+} from "../../hooks/useWorkflowQueries.js";
+import { authService } from "../../services/authService.js";
+import { disconnectSocket } from "../../hooks/useSocket.js";
+import { setAuthToken, setOrganizationId } from "../../api/client.js";
+import { useAppStore } from "../../store/useAppStore.js";
+import { Avatar, Button, Field, IconButton, Modal } from "../ui/index.jsx";
 
 export function NotificationPanel() {
-  const navigate = useNavigate()
-  const { notificationsOpen, setNotifications } = useAppStore()
-  const { data: notificationsData } = useNotifications()
-  const { markNotification, markAllNotifications } = useWorkflowMutations()
-  const [tab, setTab] = useState("All")
+  const navigate = useNavigate();
+  const { notificationsOpen, setNotifications } = useAppStore();
+  const {
+    data: notificationsData,
+    isLoading: notificationsLoading,
+    isError: notificationsError,
+    refetch: refetchNotifications,
+  } = useNotifications();
+  const { markNotification, markAllNotifications } = useWorkflowMutations();
+  const [tab, setTab] = useState("All");
 
-  if (!notificationsOpen) return null
+  if (!notificationsOpen) return null;
 
-  const notifications = notificationsData?.notifications || []
-  const unreadCount = notifications.filter((item) => item.unread).length
+  const notifications = notificationsData?.notifications || [];
+  const unreadCount = notifications.filter((item) => item.unread).length;
 
   const filtered = notifications.filter((item) => {
-    if (tab === "All") return true
-    const titleMatch = (item.title || "").toLowerCase()
-    const target = tab.slice(0, -1).toLowerCase()
-    return titleMatch.includes(target)
-  })
+    if (tab === "All") return true;
+    if (tab === "Tasks")
+      return item.entityType === "task" || item.entityType === "comment";
+    if (tab === "Projects") return item.entityType === "project";
+    if (tab === "Mentions")
+      return item.entityType === "member" || item.entityType === "invitation";
+    return true;
+  });
+
+  const taskReference = (value) => {
+    if (typeof value !== "string") return null;
+    const reference = value.trim();
+    return /^WF-\d+$/i.test(reference) || /^[a-f\d]{24}$/i.test(reference)
+      ? reference
+      : null;
+  };
+
+  const handleClick = (item) => {
+    if (item.unread) {
+      markNotification.mutate({ id: item.id, unread: false });
+    }
+    setNotifications(false);
+    // Navigate to the specific entity
+    if (item.entityType === "task" || item.entityType === "comment") {
+      const taskId = taskReference(item.entityId);
+      if (taskId) {
+        navigate(`/tasks/${taskId}`);
+      } else {
+        navigate("/tasks");
+      }
+    } else if (item.entityType === "project") {
+      navigate("/projects");
+    } else if (
+      item.entityType === "member" ||
+      item.entityType === "invitation"
+    ) {
+      navigate("/team");
+    } else {
+      navigate("/dashboard");
+    }
+  };
 
   return (
     <div className="floating-panel notification-panel">
       <header>
         <div>
           <h3>Notifications</h3>
-          <p>{unreadCount} unread updates</p>
+          <p>{unreadCount} unread</p>
         </div>
         <IconButton label="Close" onClick={() => setNotifications(false)}>
           <X size={18} />
@@ -68,24 +112,38 @@ export function NotificationPanel() {
         ))}
       </div>
       <div>
-        {filtered.length === 0 ? (
-          <p className="empty-hint" style={{ padding: "1.5rem", textAlign: "center", color: "var(--muted)" }}>No notifications</p>
+        {notificationsLoading ? (
+          <p
+            className="empty-hint"
+            style={{ padding: "1.5rem", textAlign: "center" }}
+          >
+            Loading notifications...
+          </p>
+        ) : notificationsError ? (
+          <div
+            className="empty-hint"
+            style={{ padding: "1.5rem", textAlign: "center" }}
+          >
+            <p>Unable to load notifications.</p>
+            <button onClick={() => refetchNotifications()}>Retry</button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <p
+            className="empty-hint"
+            style={{
+              padding: "1.5rem",
+              textAlign: "center",
+              color: "var(--muted)",
+            }}
+          >
+            No notifications
+          </p>
         ) : (
           filtered.map((item) => (
             <button
               className={`notification ${item.unread ? "unread" : ""}`}
               key={item.id}
-              onClick={() => {
-                if (item.unread) {
-                  markNotification.mutate({ id: item.id, unread: false })
-                }
-                setNotifications(false)
-                if (item.entityType === "task" || (item.title || "").includes("WF-")) {
-                  navigate("/tasks")
-                } else {
-                  navigate("/projects")
-                }
-              }}
+              onClick={() => handleClick(item)}
             >
               <span className="notification-icon">
                 <Bell size={16} />
@@ -100,59 +158,56 @@ export function NotificationPanel() {
         )}
       </div>
       <footer>
-        <button onClick={() => markAllNotifications.mutate()}>Mark all as read</button>
+        <button onClick={() => markAllNotifications.mutate()}>
+          Mark all as read
+        </button>
       </footer>
     </div>
-  )
+  );
 }
 
 export function CommandMenu() {
-  const navigate = useNavigate()
-  const {
-    commandOpen,
-    setCommandOpen,
-    setCreateModal,
-    setTask,
-    toggleTheme,
-  } = useAppStore()
-  const { data: projectsData } = useProjects()
-  const { data: tasksData } = useTasks()
-  const { data: membersData } = useMembers()
-  const projects = projectsData?.projects || []
-  const tasks = tasksData?.tasks || []
-  const members = membersData?.members || []
-  const [query, setQuery] = useState("")
-  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate();
+  const { commandOpen, setCommandOpen, setCreateModal, setTask, toggleTheme } =
+    useAppStore();
+  const { data: projectsData } = useProjects();
+  const { data: tasksData } = useTasks();
+  const { data: membersData } = useMembers();
+  const projects = projectsData?.projects || [];
+  const tasks = tasksData?.tasks || [];
+  const members = membersData?.members || [];
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const handler = (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault()
-        setCommandOpen(!useAppStore.getState().commandOpen)
+        event.preventDefault();
+        setCommandOpen(!useAppStore.getState().commandOpen);
       }
-      if (event.key === "Escape") setCommandOpen(false)
+      if (event.key === "Escape") setCommandOpen(false);
       if (
         !["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) &&
         !event.metaKey &&
         !event.ctrlKey
       ) {
-        if (event.key.toLowerCase() === "n") setCreateModal("task")
+        if (event.key.toLowerCase() === "n") setCreateModal("task");
         if (event.key.toLowerCase() === "c")
-          useAppStore.getState().setCreateMenu(true)
+          useAppStore.getState().setCreateMenu(true);
       }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [setCommandOpen, setCreateModal])
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [setCommandOpen, setCreateModal]);
 
   useEffect(() => {
-    if (!query) return setLoading(false)
-    setLoading(true)
-    const timeout = setTimeout(() => setLoading(false), 180)
-    return () => clearTimeout(timeout)
-  }, [query])
+    if (!query) return setLoading(false);
+    setLoading(true);
+    const timeout = setTimeout(() => setLoading(false), 180);
+    return () => clearTimeout(timeout);
+  }, [query]);
 
-  if (!commandOpen) return null
+  if (!commandOpen) return null;
 
   const commands = [
     {
@@ -196,8 +251,8 @@ export function CommandMenu() {
       type: "Task",
       Icon: CheckCircle2,
       action: () => {
-        navigate("/tasks")
-        setTimeout(() => setTask(item), 50)
+        navigate("/tasks");
+        setTimeout(() => setTask(item), 50);
       },
     })),
     ...members.map((item) => ({
@@ -206,11 +261,11 @@ export function CommandMenu() {
       Icon: UserRound,
       action: () => navigate("/team"),
     })),
-  ]
+  ];
 
   const results = commands.filter((item) =>
     item.name.toLowerCase().includes(query.toLowerCase()),
-  )
+  );
 
   return (
     <div
@@ -242,8 +297,8 @@ export function CommandMenu() {
               <button
                 key={`${type}-${name}`}
                 onClick={() => {
-                  action()
-                  setCommandOpen(false)
+                  action();
+                  setCommandOpen(false);
                 }}
               >
                 <span>
@@ -264,12 +319,12 @@ export function CommandMenu() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export function CreateMenu() {
-  const { createMenu, setCreateMenu, setCreateModal } = useAppStore()
-  if (!createMenu) return null
+  const { createMenu, setCreateMenu, setCreateModal } = useAppStore();
+  if (!createMenu) return null;
   return (
     <div className="create-dropdown">
       {[
@@ -288,37 +343,42 @@ export function CreateMenu() {
         Close menu
       </button>
     </div>
-  )
+  );
 }
 
 export function CreateModal() {
-  const navigate = useNavigate()
-  const { createModal: type, setCreateModal } = useAppStore()
-  const { data: projectsData } = useProjects()
-  const { data: membersData } = useMembers()
-  const projects = projectsData?.projects || []
-  const members = membersData?.members || []
+  const navigate = useNavigate();
+  const {
+    createModal: type,
+    createModalStatus,
+    createModalProjectId,
+    setCreateModal,
+  } = useAppStore();
+  const { data: projectsData } = useProjects();
+  const { data: membersData } = useMembers();
+  const projects = projectsData?.projects || [];
+  const members = membersData?.members || [];
   const {
     createProject,
     createTask,
     inviteMember,
     createCalendarEvent,
     createOrganization,
-  } = useWorkflowMutations()
+  } = useWorkflowMutations();
 
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  if (!type) return null
+  if (!type) return null;
 
   const submit = async (event) => {
-    event.preventDefault()
-    setError("")
-    const data = Object.fromEntries(new FormData(event.currentTarget))
+    event.preventDefault();
+    setError("");
+    const data = Object.fromEntries(new FormData(event.currentTarget));
     if (!data.name && !data.title && !data.email) {
-      return setError("Please complete the required field.")
+      return setError("Please complete the required field.");
     }
-    setLoading(true)
+    setLoading(true);
     try {
       if (type === "project") {
         const created = await createProject.mutateAsync({
@@ -326,9 +386,9 @@ export function CreateModal() {
           description: data.description || "A new collaborative project.",
           status: data.status || "Planning",
           due: data.due || undefined,
-        })
-        setCreateModal(null)
-        if (created?.id) navigate(`/projects/${created.id}`)
+        });
+        setCreateModal(null);
+        if (created?.id) navigate(`/projects/${created.id}`);
       } else if (type === "task") {
         await createTask.mutateAsync({
           title: data.title,
@@ -339,34 +399,37 @@ export function CreateModal() {
           dueDate: data.due || undefined,
           label: data.label || "General",
           assigneeEmail: data.assigneeEmail || undefined,
-        })
-        setCreateModal(null)
+        });
+        setCreateModal(null);
       } else if (type === "invite") {
         await inviteMember.mutateAsync({
           email: data.email,
           role: data.role || "Member",
-        })
-        setCreateModal(null)
+        });
+        setCreateModal(null);
       } else if (type === "event") {
         await createCalendarEvent.mutateAsync({
           title: data.title,
           day: Number(data.day),
           time: data.time,
-          project: data.project,
-        })
-        setCreateModal(null)
+          // data.project holds the project slug (option value is project.id which is the slug)
+          projectSlug: data.project || undefined,
+        });
+        setCreateModal(null);
       } else if (type === "workspace") {
         await createOrganization.mutateAsync({
           name: data.name,
-        })
-        setCreateModal(null)
+        });
+        setCreateModal(null);
       }
     } catch (err) {
-      setError(err?.response?.data?.message || err.message || "Failed to create")
+      setError(
+        err?.response?.data?.message || err.message || "Failed to create",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const titles = {
     task: "Create new task",
@@ -374,7 +437,7 @@ export function CreateModal() {
     invite: "Invite team member",
     workspace: "Create workspace",
     event: "Create event",
-  }
+  };
 
   return (
     <Modal title={titles[type]} onClose={() => setCreateModal(null)}>
@@ -401,7 +464,9 @@ export function CreateModal() {
               <select className="input">
                 <option>All projects</option>
                 {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name}</option>
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -437,8 +502,11 @@ export function CreateModal() {
             </div>
             <Field label="Project">
               <select name="project" className="input">
+                <option value="">None</option>
                 {projects.map((project) => (
-                  <option key={project.id} value={project.name}>{project.name}</option>
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -468,9 +536,15 @@ export function CreateModal() {
               <>
                 <div className="field-row">
                   <Field label="Project">
-                    <select name="projectId" className="input">
+                    <select
+                      name="projectId"
+                      className="input"
+                      defaultValue={createModalProjectId || projects[0]?.id}
+                    >
                       {projects.map((project) => (
-                        <option key={project.id} value={project.id}>{project.name}</option>
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
                       ))}
                     </select>
                   </Field>
@@ -478,14 +552,20 @@ export function CreateModal() {
                     <select name="assigneeEmail" className="input">
                       <option value="">Unassigned</option>
                       {members.map((member) => (
-                        <option key={member.email} value={member.email}>{member.name}</option>
+                        <option key={member.email} value={member.email}>
+                          {member.name}
+                        </option>
                       ))}
                     </select>
                   </Field>
                 </div>
                 <div className="field-row">
                   <Field label="Status">
-                    <select name="status" className="input">
+                    <select
+                      name="status"
+                      className="input"
+                      defaultValue={createModalStatus}
+                    >
                       {[
                         "Backlog",
                         "Todo",
@@ -546,41 +626,57 @@ export function CreateModal() {
         </footer>
       </form>
     </Modal>
-  )
+  );
 }
 
 export function UserMenu() {
-  const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
-  const { toggleTheme, addToast } = useAppStore()
-  const { data: meData } = useCurrentUser()
-  const user = meData?.user
-  const userName = user?.name || "Alex Kumar"
-  const userEmail = user?.email || "alex@acme.io"
-  const userRole = user?.role || "Admin"
-  const userObj = {
-    name: userName,
-    initials: userName
-      .split(/\s+/)
-      .map((p) => p[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
-    color: "#6366f1",
-  }
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const { toggleTheme, clearAuth } = useAppStore();
+  const organizationId = useAppStore((state) => state.organizationId);
+  const { data: meData } = useCurrentUser();
+  const user = meData?.user;
+  const activeOrganization =
+    meData?.organizations?.find((item) => item.id === organizationId) ||
+    meData?.organizations?.[0];
+  const userName = user?.name || "";
+  const userEmail = user?.email || "";
+  const userRole = activeOrganization?.role || user?.role || "Member";
+  const userObj = userName
+    ? {
+        name: userName,
+        initials: userName
+          .split(/\s+/)
+          .map((p) => p[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase(),
+        color: "#6366f1",
+      }
+    : { name: "User", initials: "U", color: "#6366f1" };
 
   const action = (callback) => {
-    callback()
-    setOpen(false)
-  }
+    callback();
+    setOpen(false);
+  };
 
-  const handleLogout = () => {
-    action(() => {
-      authService.logout()
-      addToast("Signed out successfully", "info")
-      navigate("/login")
-    })
-  }
+  const handleLogout = async () => {
+    setOpen(false);
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.warn("Server logout failed; clearing the local session.", error);
+    } finally {
+      disconnectSocket();
+      setAuthToken(null);
+      setOrganizationId(null);
+      await queryClient.cancelQueries();
+      queryClient.clear();
+      clearAuth();
+      navigate("/login", { replace: true });
+    }
+  };
 
   return (
     <div className="user-menu-wrap">
@@ -618,11 +714,11 @@ export function UserMenu() {
           <button onClick={() => action(toggleTheme)}>
             <Moon size={16} /> Toggle theme
           </button>
-          <button onClick={handleLogout}>
+          <button type="button" onClick={handleLogout}>
             <LogOut size={16} /> Log out
           </button>
         </div>
       )}
     </div>
-  )
+  );
 }

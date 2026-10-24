@@ -8,34 +8,46 @@ import {
   Send,
   Trash2,
   X,
-} from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+} from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   useCurrentUser,
   useMembers,
   useProjects,
   useTask,
   useWorkflowMutations,
-} from "../../hooks/useWorkflowQueries.js"
-import { useAppStore } from "../../store/useAppStore.js"
-import { Avatar, Badge, Button, IconButton } from "../ui/index.jsx"
+} from "../../hooks/useWorkflowQueries.js";
+import { useAppStore } from "../../store/useAppStore.js";
+import { Avatar, Badge, Button, IconButton } from "../ui/index.jsx";
+import { getTaskStatusPermission } from "../../utils/taskPermissions.js";
+
+// Simple debounce hook — fires callback after `delay` ms of inactivity
+function useDebounce(callback, delay) {
+  const timerRef = useRef(null);
+  return useCallback(
+    (...args) => {
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => callback(...args), delay);
+    },
+    [callback, delay],
+  );
+}
 
 export default function TaskDrawer() {
-  const {
-    task: selectedTask,
-    setTask,
-    addToast,
-  } = useAppStore()
+  const { task: selectedTask, setTask, addToast, user: storeUser } = useAppStore();
 
-  const { data: fetchedTask } = useTask(selectedTask?.id)
-  const task = fetchedTask || selectedTask
+  const { data: fetchedTask } = useTask(selectedTask?.id);
+  const task = fetchedTask || selectedTask;
 
-  const { data: projectsData } = useProjects()
-  const { data: membersData } = useMembers()
-  const projects = projectsData?.projects || []
-  const members = membersData?.members || []
-  const { data: meData } = useCurrentUser()
-  const currentUser = meData?.user
+  const { data: projectsData } = useProjects();
+  const { data: membersData } = useMembers();
+  const projects = projectsData?.projects || [];
+  const members = membersData?.members || [];
+  const { data: meData } = useCurrentUser();
+  const currentUser = meData?.user;
+  const user = currentUser || storeUser;
+  const { canChange: canChangeStatus, reason: statusChangeReason } =
+    getTaskStatusPermission(task, user);
 
   const {
     updateTask,
@@ -45,43 +57,59 @@ export default function TaskDrawer() {
     deleteComment,
     uploadAttachment,
     deleteAttachment,
-  } = useWorkflowMutations()
+  } = useWorkflowMutations();
 
-  const [comment, setComment] = useState("")
-  const [newItem, setNewItem] = useState("")
-  const fileInputRef = useRef(null)
-
-  if (!task) return null
+  const [comment, setComment] = useState("");
+  const [newItem, setNewItem] = useState("");
+  const fileInputRef = useRef(null);
 
   const apply = (updates) => {
-    updateTask.mutate({ id: task.id, payload: updates })
-  }
+    if (!task) return;
+    updateTask.mutate({
+      id: task.id,
+      payload: { ...updates, version: task.version },
+    });
+  };
 
-  const checklist = task.checklist || []
+  // Debounced apply for text inputs — prevents one API call per keystroke
+  const applyDebounced = useDebounce(apply, 500);
+
+  if (!task) return null;
+
+  const checklist = task.checklist || [];
 
   const updateChecklist = (items) => {
-    apply({ checklist: items })
-  }
+    apply({ checklist: items });
+  };
 
-  const comments = task.commentsList || []
+  const comments = task.commentsList || [];
 
   const sendComment = () => {
-    if (!comment.trim()) return
-    addComment.mutate({ taskId: task.id, text: comment.trim() })
-    setComment("")
-  }
+    if (!comment.trim()) return;
+    addComment.mutate({ taskId: task.id, text: comment.trim() });
+    setComment("");
+  };
 
   const handleFileUpload = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const formData = new FormData()
-    formData.append("file", file)
-    uploadAttachment.mutate({ taskId: task.id, formData })
-    e.target.value = ""
-  }
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    uploadAttachment.mutate({ taskId: task.id, formData, file });
+    e.target.value = "";
 
-  const currentAssigneeValue = task.assignee?.email || task.assignee?.name || ""
-  const currentProjectValue = task.projectId || task.project || ""
+  };
+
+  const currentAssigneeValue = task.assignee?.email || "";
+  const currentProjectValue =
+    projects.find((project) => project._id === task.projectId)?.id ||
+    task.projectId ||
+    "";
+
+  // task.dueDate is the raw ISO Date from the serializer; task.due is the formatted string
+  const dueDateValue = task.dueDate
+    ? new Date(task.dueDate).toISOString().slice(0, 10)
+    : "";
 
   return (
     <div className="drawer-overlay" onMouseDown={() => setTask(null)}>
@@ -94,8 +122,10 @@ export default function TaskDrawer() {
             <Badge>{task.id}</Badge>
             <input
               className="drawer-title-input"
-              value={task.title || ""}
-              onChange={(event) => apply({ title: event.target.value })}
+              defaultValue={task.title || ""}
+              onChange={(event) =>
+                applyDebounced({ title: event.target.value })
+              }
               aria-label="Task title"
             />
           </div>
@@ -103,8 +133,8 @@ export default function TaskDrawer() {
             <IconButton
               label="Duplicate task"
               onClick={() => {
-                duplicateTask.mutate(task.id)
-                setTask(null)
+                duplicateTask.mutate(task.id);
+                setTask(null);
               }}
             >
               <Copy size={18} />
@@ -113,8 +143,8 @@ export default function TaskDrawer() {
               label="Delete task"
               onClick={() => {
                 if (window.confirm(`Delete ${task.title}?`)) {
-                  deleteTask.mutate(task.id)
-                  setTask(null)
+                  deleteTask.mutate(task.id);
+                  setTask(null);
                 }
               }}
             >
@@ -128,17 +158,34 @@ export default function TaskDrawer() {
         <div className="drawer-scroll">
           <div className="task-properties">
             <span>Status</span>
-            <select
-              className="property-select"
-              value={task.status || "Backlog"}
-              onChange={(event) => apply({ status: event.target.value })}
-            >
-              {["Backlog", "Todo", "In Progress", "In Review", "Done"].map(
-                (value) => (
-                  <option key={value}>{value}</option>
-                ),
+            <div className="property-field-group">
+              <select
+                className="property-select"
+                value={task.status || "Backlog"}
+                disabled={!canChangeStatus}
+                title={!canChangeStatus ? statusChangeReason : "Change status"}
+                onChange={(event) => apply({ status: event.target.value })}
+              >
+                {["Backlog", "Todo", "In Progress", "In Review", "Done"].map(
+                  (value) => (
+                    <option key={value}>{value}</option>
+                  ),
+                )}
+              </select>
+              {!canChangeStatus && (
+                <p
+                  className="task-status-hint"
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--muted)",
+                    marginTop: "4px",
+                    lineHeight: "1.3",
+                  }}
+                >
+                  {statusChangeReason}
+                </p>
               )}
-            </select>
+            </div>
             <span>Priority</span>
             <select
               className="property-select"
@@ -154,13 +201,7 @@ export default function TaskDrawer() {
               className="property-select"
               value={currentAssigneeValue}
               onChange={(event) => {
-                const val = event.target.value
-                const member = members.find(
-                  (m) => m.email === val || m.name === val,
-                )
-                apply({
-                  assigneeEmail: member ? member.email : "",
-                })
+                apply({ assigneeEmail: event.target.value });
               }}
             >
               <option value="">Unassigned</option>
@@ -174,12 +215,10 @@ export default function TaskDrawer() {
             <input
               className="property-select"
               type="date"
-              value={
-                task.due?.match(/^\d{4}-\d{2}-\d{2}/)
-                  ? task.due.slice(0, 10)
-                  : ""
+              value={dueDateValue}
+              onChange={(event) =>
+                apply({ dueDate: event.target.value || null })
               }
-              onChange={(event) => apply({ due: event.target.value })}
             />
             <span>Project</span>
             <select
@@ -196,20 +235,21 @@ export default function TaskDrawer() {
             <span>Label</span>
             <input
               className="property-select"
-              value={task.label || ""}
-              onChange={(event) => apply({ label: event.target.value })}
+              defaultValue={task.label || ""}
+              onChange={(event) =>
+                applyDebounced({ label: event.target.value })
+              }
             />
           </div>
           <section className="drawer-section">
             <h3>Description</h3>
             <textarea
               className="drawer-description"
-              value={
-                task.description ||
-                ""
-              }
+              defaultValue={task.description || ""}
               placeholder="Add some context..."
-              onChange={(event) => apply({ description: event.target.value })}
+              onChange={(event) =>
+                applyDebounced({ description: event.target.value })
+              }
             />
           </section>
           <section className="drawer-section">
@@ -257,13 +297,13 @@ export default function TaskDrawer() {
             <form
               className="checklist-add"
               onSubmit={(event) => {
-                event.preventDefault()
+                event.preventDefault();
                 if (newItem.trim()) {
                   updateChecklist([
                     ...checklist,
                     { id: `${Date.now()}`, title: newItem.trim(), done: false },
-                  ])
-                  setNewItem("")
+                  ]);
+                  setNewItem("");
                 }
               }}
             >
@@ -309,11 +349,12 @@ export default function TaskDrawer() {
                       rel="noopener noreferrer"
                       style={{ color: "var(--accent)" }}
                     >
-                      {att.filename}
+                      {/* BUGFIX: serializer returns att.name, not att.filename */}
+                      {att.name || att.filename || "Attachment"}
                     </a>
                     <button
                       type="button"
-                      aria-label={`Remove ${att.filename}`}
+                      aria-label={`Remove ${att.name || att.filename || "attachment"}`}
                       onClick={() =>
                         deleteAttachment.mutate({
                           taskId: task.id,
@@ -341,14 +382,18 @@ export default function TaskDrawer() {
             <h3>Comments</h3>
             {comments.map((item) => (
               <div className="comment" key={item.id}>
-                <Avatar person={item.author || { name: "User", initials: "U" }} size="sm" />
+                <Avatar
+                  person={item.author || { name: "User", initials: "U" }}
+                  size="sm"
+                />
                 <div>
                   <p>
                     <strong>{item.author?.name || "Member"}</strong> {item.text}
                   </p>
                   <small>{item.time}</small>
-                  {(item.author?.name === currentUser?.name ||
-                    item.author?.name === "Alex Kumar") && (
+                  {/* Check by userId or name */}
+                  {(item.author?.id === currentUser?.id ||
+                    item.author?.name === currentUser?.name) && (
                     <button
                       className="delete-comment"
                       onClick={() =>
@@ -366,19 +411,34 @@ export default function TaskDrawer() {
             ))}
             <div className="comment-box">
               <Avatar
-                person={{
-                  name: currentUser?.name || "Alex Kumar",
-                  initials: (currentUser?.name || "A")
-                    .slice(0, 2)
-                    .toUpperCase(),
-                }}
+                person={
+                  currentUser
+                    ? {
+                        name: currentUser.name,
+                        initials:
+                          currentUser.initials ||
+                          currentUser.name.slice(0, 2).toUpperCase(),
+                        color: currentUser.color,
+                      }
+                    : { name: "User", initials: "U", color: "#6366F1" }
+                }
                 size="sm"
               />
               <div>
                 <textarea
                   value={comment}
                   onChange={(event) => setComment(event.target.value)}
-                  placeholder="Write a comment..."
+                  onKeyDown={(event) => {
+                    // Ctrl+Enter / Cmd+Enter to send
+                    if (
+                      (event.ctrlKey || event.metaKey) &&
+                      event.key === "Enter"
+                    ) {
+                      event.preventDefault();
+                      sendComment();
+                    }
+                  }}
+                  placeholder="Write a comment… (Ctrl+Enter to send)"
                 />
                 <div>
                   <span>
@@ -411,14 +471,14 @@ export default function TaskDrawer() {
           <Button
             icon={CheckCircle2}
             onClick={() => {
-              addToast("Changes saved")
-              setTask(null)
+              addToast("Changes saved");
+              setTask(null);
             }}
           >
-            Save changes
+            Done
           </Button>
         </footer>
       </aside>
     </div>
-  )
+  );
 }

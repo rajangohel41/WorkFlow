@@ -1,4 +1,5 @@
 import { Router } from "express"
+import mongoose from "mongoose"
 import { CalendarEvent } from "../models/CalendarEvent.js"
 import { Task } from "../models/Task.js"
 import { Project } from "../models/Project.js"

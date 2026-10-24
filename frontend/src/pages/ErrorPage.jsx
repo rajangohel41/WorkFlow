@@ -7,8 +7,12 @@ import {
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { Button } from "../components/ui/index.jsx"
+import { useDocumentTitle } from "../hooks/useRouteTitle.js"
 
 export default function ErrorPage({ type = "404" }) {
+  useDocumentTitle(
+    type === "404" ? "Page Not Found" : type === "500" ? "Server Error" : "Error",
+  )
   const data = {
     404: {
       icon: "404",

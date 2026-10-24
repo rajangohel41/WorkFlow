@@ -47,6 +47,22 @@ export function useProject(projectId) {
   })
 }
 
+export function useMilestones(projectId) {
+  return useQuery({
+    queryKey: queryKeys.milestones(projectId),
+    queryFn: () => projectService.milestones(projectId),
+    enabled: Boolean(projectId),
+  })
+}
+
+export function useProjectActivity(projectId) {
+  return useQuery({
+    queryKey: queryKeys.projectActivity(projectId),
+    queryFn: () => projectService.activity(projectId),
+    enabled: Boolean(projectId),
+  })
+}
+
 export function useTasks(params = {}) {
   return useQuery({
     queryKey: queryKeys.tasks(params),
@@ -69,6 +85,13 @@ export function useMembers() {
   })
 }
 
+export function usePendingInvitations() {
+  return useQuery({
+    queryKey: queryKeys.invitations,
+    queryFn: () => organizationService.pendingInvitations(),
+  })
+}
+
 export function useNotifications() {
   return useQuery({
     queryKey: queryKeys.notifications,
@@ -76,17 +99,17 @@ export function useNotifications() {
   })
 }
 
-export function useDashboardStats() {
+export function useDashboardStats(range = "Last 30 days") {
   return useQuery({
-    queryKey: queryKeys.dashboard,
-    queryFn: () => analyticsService.dashboard(),
+    queryKey: queryKeys.dashboard(range),
+    queryFn: () => analyticsService.dashboard(range),
   })
 }
 
-export function useAnalyticsOverview() {
+export function useAnalyticsOverview(range = "Last 30 days") {
   return useQuery({
-    queryKey: queryKeys.analytics,
-    queryFn: () => analyticsService.overview(),
+    queryKey: queryKeys.analytics(range),
+    queryFn: () => analyticsService.overview(range),
   })
 }
 
@@ -110,8 +133,8 @@ function invalidateWorkspace(queryClient) {
   queryClient.invalidateQueries({ queryKey: ["tasks"] })
   queryClient.invalidateQueries({ queryKey: queryKeys.members })
   queryClient.invalidateQueries({ queryKey: queryKeys.notifications })
-  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard })
-  queryClient.invalidateQueries({ queryKey: queryKeys.analytics })
+  queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })
+  queryClient.invalidateQueries({ queryKey: ["analytics", "overview"] })
   queryClient.invalidateQueries({ queryKey: queryKeys.calendar })
 }
 
@@ -148,7 +171,7 @@ export function useWorkflowMutations() {
     mutationFn: (payload) => projectService.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })
       addToast("Project created successfully")
     },
     onError: (error) => addToast(error.message, "error"),
@@ -163,11 +186,40 @@ export function useWorkflowMutations() {
     onError: (error) => addToast(error.message, "error"),
   })
 
+  const createMilestone = useMutation({
+    mutationFn: ({ projectId, payload }) => projectService.createMilestone(projectId, payload),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.milestones(vars.projectId) })
+      addToast("Milestone added", "success")
+    },
+    onError: (error) => addToast(error.message, "error"),
+  })
+
+  const updateMilestone = useMutation({
+    mutationFn: ({ projectId, milestoneId, payload }) =>
+      projectService.updateMilestone(projectId, milestoneId, payload),
+    onSuccess: (_data, vars) =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.milestones(vars.projectId) }),
+    onError: (error) => addToast(error.message, "error"),
+  })
+
+  const deleteMilestone = useMutation({
+    mutationFn: ({ projectId, milestoneId }) =>
+      projectService.removeMilestone(projectId, milestoneId),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.milestones(vars.projectId) })
+      addToast("Milestone removed", "info")
+    },
+    onError: (error) => addToast(error.message, "error"),
+  })
+
   const deleteProject = useMutation({
     mutationFn: (id) => projectService.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "overview"] })
       addToast("Project deleted successfully")
     },
     onError: (error) => addToast(error.message, "error"),
@@ -183,7 +235,8 @@ export function useWorkflowMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       queryClient.invalidateQueries({ queryKey: ["projects"] })
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "overview"] })
       addToast("Task created successfully")
     },
     onError: (error) => addToast(error.message, "error"),
@@ -205,14 +258,48 @@ export function useWorkflowMutations() {
       })
       return { previous }
     },
-    onError: (error, _vars, context) => {
+    onSuccess: (task) => {
+      queryClient.setQueriesData({ queryKey: ["tasks"] }, (old) => {
+        if (!old?.tasks) return old
+        return {
+          ...old,
+          tasks: old.tasks.map((item) =>
+            item.id === task.id || item._id === task._id ? task : item,
+          ),
+        }
+      })
+      queryClient.setQueriesData({ queryKey: ["task"] }, (old) =>
+        old && (old.id === task.id || old._id === task._id) ? task : old,
+      )
+      queryClient.setQueryData(queryKeys.task(task.id), task)
+    },
+    onError: (error, vars, context) => {
       context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data))
-      addToast(error.message, "error")
+      if (error?.status === 409 || error?.response?.status === 409) {
+        addToast(
+          "Task was modified concurrently by another session. Refetching latest version...",
+          "warning",
+        )
+      } else if (error?.status === 403 || error?.response?.status === 403) {
+        addToast(
+          error.message ||
+            error.data?.message ||
+            "Only the assigned team member can change this task's status.",
+          "error",
+        )
+      } else {
+        addToast(error.message || "Failed to update task", "error")
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.task(vars.id) })
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
     },
     onSettled: (_data, _error, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
-      queryClient.invalidateQueries({ queryKey: queryKeys.task(vars.id) })
+      if (vars?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(vars.id) })
+      }
       queryClient.invalidateQueries({ queryKey: ["projects"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "overview"] })
     },
   })
 
@@ -220,6 +307,9 @@ export function useWorkflowMutations() {
     mutationFn: (id) => taskService.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["projects"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "overview"] })
       addToast("Task deleted successfully")
     },
     onError: (error) => addToast(error.message, "error"),
@@ -255,13 +345,14 @@ export function useWorkflowMutations() {
   })
 
   const uploadAttachment = useMutation({
-    mutationFn: ({ taskId, formData }) =>
-      taskService.uploadAttachment(taskId, formData),
+    mutationFn: ({ taskId, formData, file }) =>
+      taskService.uploadAttachment(taskId, formData, file),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.task(vars.taskId) })
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       addToast("File uploaded successfully")
     },
+
     onError: (error) => addToast(error.message, "error"),
   })
 
@@ -278,9 +369,13 @@ export function useWorkflowMutations() {
 
   const inviteMember = useMutation({
     mutationFn: (payload) => teamService.invite(payload),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members })
-      addToast("Invitation sent")
+      if (data?.immediate) {
+        addToast("Member added to workspace", "success")
+      } else {
+        addToast("Invitation sent", "success")
+      }
     },
     onError: (error) => addToast(error.message, "error"),
   })
@@ -288,7 +383,10 @@ export function useWorkflowMutations() {
   const updateMember = useMutation({
     mutationFn: ({ userId, payload }) =>
       teamService.updateMember(userId, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.members }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members })
+      addToast("Role updated", "success")
+    },
     onError: (error) => addToast(error.message, "error"),
   })
 
@@ -296,8 +394,9 @@ export function useWorkflowMutations() {
     mutationFn: (userId) => teamService.removeMember(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members })
-      addToast("Member removed")
+      addToast("Member removed", "info")
     },
+    onError: (error) => addToast(error.message, "error"),
   })
 
   const markNotification = useMutation({
@@ -342,11 +441,60 @@ export function useWorkflowMutations() {
     },
   })
 
+  const acceptInvitation = useMutation({
+
+    mutationFn: (token) => organizationService.acceptInvite(token),
+    onSuccess: (data) => {
+      if (data?.organization) {
+        setOrganizationId(data.organization.id)
+        setOrganization(data.organization)
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.members })
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invitations })
+      queryClient.invalidateQueries({ queryKey: queryKeys.me })
+      queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })
+      addToast(`Joined ${data?.organization?.name || "workspace"}`, "success")
+    },
+    onError: (error) => addToast(error.message, "error"),
+  })
+
+  const rejectInvitation = useMutation({
+    mutationFn: (token) => organizationService.rejectInvite(token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invitations })
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications })
+      addToast("Invitation declined", "info")
+    },
+    onError: (error) => addToast(error.message, "error"),
+  })
+
+  const resendInvitation = useMutation({
+    mutationFn: (token) => organizationService.resendInvite(token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members })
+      addToast("Invitation resent", "success")
+    },
+    onError: (error) => addToast(error.message, "error"),
+  })
+
+  const revokeInvitation = useMutation({
+    mutationFn: (token) => organizationService.revokeInvite(token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members })
+      addToast("Invitation revoked", "info")
+    },
+    onError: (error) => addToast(error.message, "error"),
+  })
+
   return {
     switchOrganization,
     createOrganization,
     createProject,
     updateProject,
+    createMilestone,
+    updateMilestone,
+    deleteMilestone,
     deleteProject,
     toggleFavorite,
     createTask,
@@ -358,6 +506,10 @@ export function useWorkflowMutations() {
     uploadAttachment,
     deleteAttachment,
     inviteMember,
+    acceptInvitation,
+    rejectInvitation,
+    resendInvitation,
+    revokeInvitation,
     updateMember,
     removeMember,
     markNotification,

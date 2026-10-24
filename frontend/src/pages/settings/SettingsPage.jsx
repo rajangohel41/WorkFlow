@@ -12,10 +12,10 @@ import {
   UserRound,
   UsersRound,
   Zap,
-} from "lucide-react"
-import { NavLink, useLocation } from "react-router-dom"
-import { useState, useEffect } from "react"
-import { useAppStore } from "../../store/useAppStore.js"
+} from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useAppStore } from "../../store/useAppStore.js";
 import {
   Avatar,
   Badge,
@@ -25,10 +25,13 @@ import {
   PageHeader,
   ProgressBar,
   Modal,
-} from "../../components/ui/index.jsx"
-import { useWorkflowMutations } from "../../hooks/useWorkflowQueries.js"
-import { organizationService } from "../../services/organizationService.js"
-import { authService } from "../../services/authService.js"
+} from "../../components/ui/index.jsx";
+import {
+  useCurrentUser,
+  useWorkflowMutations,
+} from "../../hooks/useWorkflowQueries.js";
+import { organizationService } from "../../services/organizationService.js";
+import { authService } from "../../services/authService.js";
 
 const settingsNav = [
   ["General", Building2, "/settings"],
@@ -38,40 +41,47 @@ const settingsNav = [
   ["Members", UsersRound, "/team"],
   ["Billing", CreditCard, "/settings/billing"],
   ["Appearance", Monitor, "/settings/appearance"],
-]
+];
 
 function General() {
-  const addToast = useAppStore((state) => state.addToast)
-  const organization = useAppStore((state) => state.organization)
-  const setOrganization = useAppStore((state) => state.setOrganization)
+  const addToast = useAppStore((state) => state.addToast);
+  const organization = useAppStore((state) => state.organization);
+  const setOrganization = useAppStore((state) => state.setOrganization);
 
-  const [name, setName] = useState(organization?.name || "Acme Technologies")
-  const [slug, setSlug] = useState(organization?.slug || "acme-technologies")
-  const [view, setView] = useState("Board")
-  const [saving, setSaving] = useState(false)
+  const [name, setName] = useState(organization?.name || "");
+  const [slug, setSlug] = useState(organization?.slug || "");
+  const [defaultView, setDefaultView] = useState(
+    organization?.defaultView || "board",
+  );
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (organization?.name) setName(organization.name)
-    if (organization?.slug) setSlug(organization.slug)
-  }, [organization])
+    if (organization?.name) setName(organization.name);
+    if (organization?.slug) setSlug(organization.slug);
+    if (organization?.defaultView) setDefaultView(organization.defaultView);
+  }, [organization?.name, organization?.slug, organization?.defaultView]);
 
   const handleSave = async () => {
     try {
-      setSaving(true)
-      const updated = await organizationService.updateCurrent({ name })
-      setOrganization({ ...organization, ...updated })
-      addToast("Workspace settings saved", "success")
+      setSaving(true);
+      const updated = await organizationService.updateCurrent({
+        name,
+        slug,
+        defaultView,
+      });
+      setOrganization({ ...organization, ...updated });
+      addToast("Workspace settings saved", "success");
     } catch (err) {
-      addToast(err.message || "Failed to update workspace", "error")
+      addToast(err.message || "Failed to update workspace", "error");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   return (
     <SettingsSection
       title="Workspace settings"
-      subtitle="Manage your workspace details and preferences."
+      subtitle="Manage your workspace details, URL slug, and default view."
     >
       <Field
         label="Workspace name"
@@ -93,44 +103,57 @@ function General() {
           />
         </div>
       </Field>
-      <Field label="Default project view">
+      <Field
+        label="Default project view"
+        hint="Default layout displayed when opening project workspaces."
+      >
         <select
           className="input"
-          value={view}
-          onChange={(e) => setView(e.target.value)}
+          value={defaultView}
+          onChange={(e) => setDefaultView(e.target.value)}
         >
-          <option>Board</option>
-          <option>List</option>
-          <option>Timeline</option>
+          <option value="board">Board (Kanban)</option>
+          <option value="list">List</option>
+          <option value="timeline">Timeline</option>
+          <option value="calendar">Calendar</option>
         </select>
       </Field>
       <Save onSave={handleSave} loading={saving} />
     </SettingsSection>
-  )
+  );
 }
 
 function Profile() {
-  const { profile, user } = useAppStore()
-  const { updateProfile } = useWorkflowMutations()
-  const addToast = useAppStore((state) => state.addToast)
+  const { profile, user } = useAppStore();
+  const { updateProfile } = useWorkflowMutations();
+  const addToast = useAppStore((state) => state.addToast);
 
   const [draft, setDraft] = useState({
     name: profile.name || user?.name || "",
     title: profile.title || user?.title || "",
     email: profile.email || user?.email || "",
-    bio: "Product leader focused on building thoughtful software and high-performing teams.",
-  })
+  });
 
   useEffect(() => {
-    if (user?.name || profile.name) {
+    const currentName = user?.name || profile.name;
+    const currentEmail = user?.email || profile.email;
+    const currentTitle = user?.title || profile.title;
+    if (currentName || currentEmail) {
       setDraft((d) => ({
         ...d,
-        name: user?.name || profile.name,
-        email: user?.email || profile.email,
-        title: user?.title || profile.title || d.title,
-      }))
+        name: currentName || d.name,
+        email: currentEmail || d.email,
+        title: currentTitle || d.title,
+      }));
     }
-  }, [user, profile])
+  }, [
+    user?.name,
+    user?.email,
+    user?.title,
+    profile?.name,
+    profile?.email,
+    profile?.title,
+  ]);
 
   const currentUser = {
     name: draft.name || "User",
@@ -140,14 +163,14 @@ function Profile() {
       .join("")
       .slice(0, 2),
     color: "#6366F1",
-  }
+  };
 
   const handleSave = () => {
     updateProfile.mutate({
       name: draft.name,
       title: draft.title,
-    })
-  }
+    });
+  };
 
   return (
     <SettingsSection
@@ -158,16 +181,8 @@ function Profile() {
         <Avatar person={currentUser} />
         <div>
           <strong>Profile photo</strong>
-          <small>JPG or PNG. Max size 2MB.</small>
+          <small>Profile photo updates are not available.</small>
         </div>
-        <Button
-          variant="secondary"
-          onClick={() =>
-            addToast("Choose a profile image from your device", "info")
-          }
-        >
-          Change photo
-        </Button>
       </div>
       <div className="field-row">
         <Field label="Full name">
@@ -198,36 +213,36 @@ function Profile() {
           title="Email address cannot be changed directly."
         />
       </Field>
-      <Field label="Bio">
-        <textarea
-          className="input textarea"
-          value={draft.bio}
-          onChange={(e) => setDraft({ ...draft, bio: e.target.value })}
-        />
-      </Field>
       <Save onSave={handleSave} loading={updateProfile.isPending} />
     </SettingsSection>
-  )
+  );
 }
 
 function Notifications() {
-  const { preferences, updatePreferences: updateStorePref } = useAppStore()
-  const { updatePreferences } = useWorkflowMutations()
-  const addToast = useAppStore((state) => state.addToast)
+  const { preferences, updatePreferences: updateStorePref } = useAppStore();
+  const { updatePreferences } = useWorkflowMutations();
+  const { data: meData } = useCurrentUser();
+  const addToast = useAppStore((state) => state.addToast);
 
-  const [prefs, setPrefs] = useState(preferences)
+  const [prefs, setPrefs] = useState(preferences);
+
+  useEffect(() => {
+    if (meData?.user?.preferences) {
+      setPrefs(meData.user.preferences);
+    }
+  }, [meData?.user?.preferences]);
 
   const toggle = (key) => {
-    const updated = { ...prefs, [key]: !prefs[key] }
-    setPrefs(updated)
-    updateStorePref(key, !prefs[key])
-  }
+    const updated = { ...prefs, [key]: !prefs[key] };
+    setPrefs(updated);
+    updateStorePref(key, !prefs[key]);
+  };
 
   const handleSave = () => {
     updatePreferences.mutate(prefs, {
       onSuccess: () => addToast("Notification preferences saved"),
-    })
-  }
+    });
+  };
 
   return (
     <SettingsSection
@@ -237,20 +252,11 @@ function Notifications() {
       <div className="toggle-list">
         {[
           [
-            "email",
-            "Email notifications",
-            "Receive a daily digest and important workspace updates.",
-          ],
-          [
             "assignments",
             "Task assignments",
             "Notify me when I'm assigned a new task.",
           ],
-          [
-            "mentions",
-            "Mentions",
-            "Notify me when someone mentions me.",
-          ],
+          ["mentions", "Mentions", "Notify me when someone mentions me."],
           [
             "projectUpdates",
             "Project updates",
@@ -275,42 +281,60 @@ function Notifications() {
       </div>
       <Save onSave={handleSave} loading={updatePreferences.isPending} />
     </SettingsSection>
-  )
+  );
 }
 
 function Security() {
-  const { addToast } = useAppStore()
-  const [twoFactor, setTwoFactor] = useState(false)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const { addToast, clearAuth } = useAppStore();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleRevokeAllSessions = async () => {
+    try {
+      setRevoking(true);
+      await authService.logoutAll();
+      clearAuth();
+      addToast("All active sessions revoked. Please sign in again.", "info");
+      window.location.href = "/login";
+    } catch (err) {
+      addToast(err.message || "Failed to revoke sessions", "error");
+    } finally {
+      setRevoking(false);
+    }
+  };
 
   const handleChangePassword = async (e) => {
-    e.preventDefault()
-    setError("")
-    if (newPassword.length < 8) {
-      return setError("New password must contain at least 8 characters.")
+    e.preventDefault();
+    setError("");
+    const strongPasswordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
+    if (!strongPasswordRegex.test(newPassword)) {
+      return setError(
+        "New password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+      );
     }
     if (newPassword !== confirmPassword) {
-      return setError("New passwords do not match.")
+      return setError("New passwords do not match.");
     }
     try {
-      setLoading(true)
-      await authService.changePassword({ currentPassword, newPassword })
-      addToast("Password changed successfully", "success")
-      setModalOpen(false)
-      setCurrentPassword("")
-      setNewPassword("")
-      setConfirmPassword("")
+      setLoading(true);
+      await authService.changePassword({ currentPassword, newPassword });
+      addToast("Password changed successfully", "success");
+      setModalOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
     } catch (err) {
-      setError(err.message || "Failed to change password")
+      setError(err.message || "Failed to change password");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <SettingsSection
@@ -334,19 +358,9 @@ function Security() {
           <ShieldCheck size={18} />
           <span>
             <strong>Two-factor authentication</strong>
-            <small>Add an extra layer of security to your account</small>
+            <small>Two-factor authentication is not available.</small>
           </span>
         </span>
-        <Button
-          onClick={() => {
-            setTwoFactor(!twoFactor)
-            addToast(
-              `Two-factor authentication ${twoFactor ? "disabled" : "enabled"}`,
-            )
-          }}
-        >
-          {twoFactor ? "Disable 2FA" : "Enable 2FA"}
-        </Button>
       </Card>
       <h3 className="settings-subtitle">Active sessions</h3>
       <div className="session">
@@ -355,11 +369,15 @@ function Security() {
           <strong>
             Current Browser <Badge tone="success">Current</Badge>
           </strong>
-          <small>Active session</small>
+          <small>Active authenticated session</small>
         </span>
-        <button onClick={() => addToast("Other sessions signed out", "info")}>
-          Sign out others
-        </button>
+        <Button
+          variant="secondary"
+          loading={revoking}
+          onClick={handleRevokeAllSessions}
+        >
+          Sign out all devices
+        </Button>
       </div>
 
       {modalOpen && (
@@ -374,7 +392,10 @@ function Security() {
                 required
               />
             </Field>
-            <Field label="New password" hint="Minimum 8 characters">
+            <Field
+              label="New password"
+              hint="Minimum 12 characters with uppercase, lowercase, a number, and a symbol"
+            >
               <input
                 type="password"
                 className="input"
@@ -409,29 +430,17 @@ function Security() {
         </Modal>
       )}
     </SettingsSection>
-  )
+  );
 }
 
 function Billing() {
-  const { plan, setPlan, addToast, organization, setOrganization } = useAppStore()
-  const [currentPlan, setCurrentPlan] = useState(organization?.plan || plan || "Business")
-
-  const handlePlanChange = async (newPlan) => {
-    setCurrentPlan(newPlan)
-    setPlan(newPlan)
-    try {
-      const updated = await organizationService.updateCurrent({ plan: newPlan })
-      setOrganization({ ...organization, ...updated })
-      addToast(`Plan changed to ${newPlan}`, "success")
-    } catch {
-      addToast(`Plan updated locally to ${newPlan}`, "info")
-    }
-  }
+  const { plan, organization } = useAppStore();
+  const currentPlan = organization?.plan || plan || "Business";
 
   return (
     <SettingsSection
       title="Billing & plan"
-      subtitle="Manage your subscription, usage, and invoices."
+      subtitle="Billing management is not configured for this workspace."
     >
       <div className="plan-card">
         <div>
@@ -440,61 +449,16 @@ function Billing() {
           </span>
           <div>
             <Badge tone="purple">{currentPlan.toUpperCase()}</Badge>
-            <h3>
-              {currentPlan === "Free" ? "$0" : currentPlan === "Pro" ? "$10" : "$16"}{" "}
-              <small>/ member / month</small>
-            </h3>
-            <p>Active workspace subscription</p>
+            <p>Current workspace plan</p>
           </div>
         </div>
-        <select
-          className="plan-select"
-          value={currentPlan}
-          onChange={(event) => handlePlanChange(event.target.value)}
-          aria-label="Select plan"
-        >
-          <option>Free</option>
-          <option>Pro</option>
-          <option>Business</option>
-        </select>
-      </div>
-      <div className="usage">
-        <h3>Plan usage</h3>
-        {[
-          ["Team members", 5, currentPlan === "Free" ? 5 : currentPlan === "Pro" ? 15 : 50],
-          ["Projects", 5, currentPlan === "Free" ? 5 : currentPlan === "Pro" ? 20 : 100],
-          ["Storage", 12, currentPlan === "Free" ? 20 : currentPlan === "Pro" ? 50 : 250],
-        ].map(([label, value, max]) => (
-          <div key={label}>
-            <div>
-              <span>{label}</span>
-              <strong>
-                {value} of {max}
-                {label === "Storage" ? " GB" : ""}
-              </strong>
-            </div>
-            <ProgressBar value={(value / max) * 100} />
-          </div>
-        ))}
-      </div>
-      <h3 className="settings-subtitle">Recent invoices</h3>
-      <div className="invoice">
-        <span>
-          <strong>Current Billing Period</strong>
-          <small>{currentPlan} plan</small>
-        </span>
-        <strong>{currentPlan === "Free" ? "$0.00" : "$80.00"}</strong>
-        <Badge tone="success">Active</Badge>
-        <button onClick={() => addToast("Billing statement generated", "info")}>
-          Download
-        </button>
       </div>
     </SettingsSection>
-  )
+  );
 }
 
 function Appearance() {
-  const { dark, setTheme, themeMode, addToast } = useAppStore()
+  const { dark, setTheme, themeMode, addToast } = useAppStore();
   return (
     <SettingsSection
       title="Appearance"
@@ -529,7 +493,7 @@ function Appearance() {
       </div>
       <Save onSave={() => addToast("Appearance preference saved")} />
     </SettingsSection>
-  )
+  );
 }
 
 function Save({ onSave, loading = false }) {
@@ -542,7 +506,7 @@ function Save({ onSave, loading = false }) {
         Save changes
       </Button>
     </div>
-  )
+  );
 }
 
 function SettingsSection({ title, subtitle, children }) {
@@ -554,11 +518,11 @@ function SettingsSection({ title, subtitle, children }) {
       </div>
       <div className="settings-form">{children}</div>
     </Card>
-  )
+  );
 }
 
 export default function SettingsPage() {
-  const path = useLocation().pathname
+  const path = useLocation().pathname;
   const content = path.endsWith("/profile") ? (
     <Profile />
   ) : path.endsWith("/notifications") ? (
@@ -571,7 +535,7 @@ export default function SettingsPage() {
     <Appearance />
   ) : (
     <General />
-  )
+  );
   return (
     <div className="page settings-page">
       <PageHeader
@@ -591,5 +555,5 @@ export default function SettingsPage() {
         {content}
       </div>
     </div>
-  )
+  );
 }

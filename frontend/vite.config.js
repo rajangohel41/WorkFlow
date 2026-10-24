@@ -5,6 +5,16 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const resolveApiTarget = () => {
+  const raw = process.env.VITE_API_URL || 'http://localhost:5000'
+  try {
+    const url = new URL(raw)
+    url.pathname = ''
+    return url.origin
+  } catch {
+    return raw.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '') || 'http://localhost:5000'
+  }
+}
 
 // Vite configuration — WorkFlow Frontend
 export default defineConfig({
@@ -22,7 +32,11 @@ export default defineConfig({
     port: parseInt(process.env.PORT || '8443'),
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        target: resolveApiTarget(),
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: resolveApiTarget(),
         changeOrigin: true,
       },
     },
@@ -30,5 +44,26 @@ export default defineConfig({
   preview: {
     host: '0.0.0.0',
     port: parseInt(process.env.PORT || '8443'),
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor-react'
+            }
+            if (id.includes('@tanstack/react-query') || id.includes('zustand')) {
+              return 'vendor-query'
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons'
+            }
+            return 'vendor-other'
+          }
+        },
+      },
+    },
   },
 })

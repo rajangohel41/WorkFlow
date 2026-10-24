@@ -8,7 +8,6 @@ export function serializeUser(user, role) {
     email: user.email,
     title: user.title || "",
     avatarUrl: user.avatarUrl || "",
-    emailVerified: user.emailVerified,
     role: role || "Member",
     initials: initials(user.name),
     color: colorForId(user._id),
@@ -51,8 +50,14 @@ export async function serializeProject(project, tasks = [], userId) {
 }
 
 export function serializeTask(task, project, assignee, commentsList) {
+  const assigneeId = task.assigneeId
+    ? task.assigneeId.toString()
+    : assignee?._id
+      ? assignee._id.toString()
+      : null
   return {
     id: task.displayId,
+    displayId: task.displayId,
     _id: task._id.toString(),
     projectId: task.projectId.toString(),
     project: project?.name || "",
@@ -61,12 +66,16 @@ export function serializeTask(task, project, assignee, commentsList) {
     status: task.status,
     priority: task.priority,
     label: task.label,
+    version: task.version || 1,
+    assigneeId,
     assignee: assignee
       ? {
+          id: assignee._id ? assignee._id.toString() : assigneeId,
+          _id: assignee._id ? assignee._id.toString() : assigneeId,
           name: assignee.name,
           initials: initials(assignee.name),
           email: assignee.email,
-          color: colorForId(assignee._id),
+          color: colorForId(assignee._id || assigneeId),
           role: "Member",
         }
       : null,
@@ -86,6 +95,7 @@ export function serializeTask(task, project, assignee, commentsList) {
         url: a.url,
         size: a.size,
         mimeType: a.mimeType,
+        uploadedBy: a.uploadedBy?.toString(),
         createdAt: a.createdAt,
       })) || [],
     commentsList: commentsList || [],
@@ -96,10 +106,13 @@ export function serializeNotification(notification) {
   return {
     id: notification._id.toString(),
     title: notification.title,
+    message: notification.message || notification.meta || notification.title,
     meta: notification.meta,
     unread: notification.unread,
     entityType: notification.entityType,
     entityId: notification.entityId?.toString(),
+    organizationId: notification.organizationId?.toString(),
+    createdAt: notification.createdAt,
   }
 }
 

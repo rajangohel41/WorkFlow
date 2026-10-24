@@ -1,8 +1,44 @@
 import assert from "node:assert"
 import fs from "node:fs"
+import mongoose from "mongoose"
 import path from "node:path"
+import { spawn } from "node:child_process"
+import { fileURLToPath } from "node:url"
+import { env } from "../src/config/env.js"
+import { seedDatabase } from "../src/db/seed.js"
 
-const BASE_URL = "http://localhost:5000"
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const BASE_URL = `http://localhost:${env.port}`
+
+let serverProcess = null
+
+async function ensureServerRunning() {
+  try {
+    const res = await fetch(`${BASE_URL}/health`)
+    if (res.ok) return
+  } catch {}
+
+  console.log("Starting backend server for test suite...")
+  serverProcess = spawn(process.execPath, ["src/index.js"], {
+    cwd: path.resolve(__dirname, ".."),
+    stdio: "pipe",
+    env: { ...process.env, NODE_ENV: "test" },
+  })
+
+  const start = Date.now()
+  while (Date.now() - start < 15000) {
+    try {
+      const res = await fetch(`${BASE_URL}/health`)
+      if (res.ok) {
+        console.log("Backend server is ready.")
+        return
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error("Backend server failed to start within 15s")
+}
+
 
 async function api(endpoint, options = {}) {
   const headers = { ...options.headers }
@@ -31,6 +67,8 @@ function getCookie(headers, name) {
 }
 
 async function runTests() {
+  await ensureServerRunning()
+  await seedDatabase()
   console.log("=== STARTING COMPREHENSIVE FULL-STACK QA & SECURITY AUDIT ===")
   let passed = 0
   let failed = 0
@@ -68,7 +106,7 @@ async function runTests() {
   await test("2.1 Login with invalid credentials returns 401", async () => {
     const res = await api("/api/v1/auth/login", {
       method: "POST",
-      body: { email: "alex@acme.io", password: "wrongpassword" },
+      body: { email: "alex@acme.io", password: "WrongPassword!" },
     })
     assert.strictEqual(res.status, 401)
   })
@@ -76,7 +114,7 @@ async function runTests() {
   await test("2.2 Login with valid credentials establishes session", async () => {
     const res = await api("/api/v1/auth/login", {
       method: "POST",
-      body: { email: "alex@acme.io", password: "password123" },
+      body: { email: "alex@acme.io", password: "Password123!" },
     })
     assert.strictEqual(res.status, 200)
     assert.strictEqual(res.data.user.email, "alex@acme.io")
@@ -127,7 +165,7 @@ async function runTests() {
   await test("3.1 Register attacker in Organization B", async () => {
     const regRes = await api("/api/v1/auth/register", {
       method: "POST",
-      body: { name: "Attacker User", email: evilEmail, password: "password123" },
+      body: { name: "Attacker User", email: evilEmail, password: "Password123!" },
     })
     assert.strictEqual(regRes.status, 201)
     orgBUserToken = getCookie(regRes.headers, "accessToken")
@@ -260,6 +298,73 @@ async function runTests() {
     assert.strictEqual(notifRes.data.notifications.length, 0)
   })
 
+  let orgAMilestoneId = ""
+  await test("4.6 IDOR: Org B user CANNOT access or mutate Org A milestones", async () => {
+    // Org A creates milestone
+    const createRes = await api(`/api/v1/projects/${orgAProject.id}/milestones`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${orgAUserToken}`,
+        "x-organization-id": orgAId,
+      },
+      body: { title: "Audit Milestone", status: "UPCOMING" },
+    })
+    assert.strictEqual(createRes.status, 201)
+    const created = createRes.data.milestone || createRes.data
+    orgAMilestoneId = created.id || created._id
+    assert.ok(orgAMilestoneId)
+
+    // Org B attempts to read Org A milestones
+    const listRes = await api(`/api/v1/projects/${orgAProject.id}/milestones`, {
+      headers: {
+        Authorization: `Bearer ${orgBUserToken}`,
+        "x-organization-id": orgBId,
+      },
+    })
+    assert.strictEqual(listRes.status, 404, "Org B user cannot list Org A project milestones")
+
+    // Org B attempts to patch Org A milestone
+    const patchRes = await api(`/api/v1/projects/${orgAProject.id}/milestones/${orgAMilestoneId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${orgBUserToken}`,
+        "x-organization-id": orgBId,
+      },
+      body: { title: "Hijacked Milestone" },
+    })
+    assert.strictEqual(patchRes.status, 404, "Org B user cannot patch Org A milestone")
+
+    // Org B attempts to delete Org A milestone
+    const delRes = await api(`/api/v1/projects/${orgAProject.id}/milestones/${orgAMilestoneId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${orgBUserToken}`,
+        "x-organization-id": orgBId,
+      },
+    })
+    assert.strictEqual(delRes.status, 404, "Org B user cannot delete Org A milestone")
+
+    // Malformed milestoneId in PATCH/DELETE returns 404 cleanly
+    const malformedPatch = await api(`/api/v1/projects/${orgAProject.id}/milestones/not-a-valid-id`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${orgAUserToken}`,
+        "x-organization-id": orgAId,
+      },
+      body: { title: "Test" },
+    })
+    assert.strictEqual(malformedPatch.status, 404)
+
+    const malformedDel = await api(`/api/v1/projects/${orgAProject.id}/milestones/not-a-valid-id`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${orgAUserToken}`,
+        "x-organization-id": orgAId,
+      },
+    })
+    assert.strictEqual(malformedDel.status, 404)
+  })
+
   // 5. Authorization & RBAC (Section 4)
   let viewerToken = ""
   const viewerEmail = `viewer-${Date.now()}@acme.io`
@@ -280,7 +385,7 @@ async function runTests() {
     // Register user for viewer
     const regRes = await api("/api/v1/auth/register", {
       method: "POST",
-      body: { name: "Viewer User", email: viewerEmail, password: "password123" },
+      body: { name: "Viewer User", email: viewerEmail, password: "Password123!" },
     })
     assert.strictEqual(regRes.status, 201)
     viewerToken = getCookie(regRes.headers, "accessToken")
@@ -323,6 +428,49 @@ async function runTests() {
       body: { role: "Admin" },
     })
     assert.strictEqual(memberRes.status, 403, "Viewer must not update roles")
+  })
+
+  await test("5.3 RBAC: Viewer CANNOT create, update or delete milestones", async () => {
+    // Viewer cannot create milestone
+    const postRes = await api(`/api/v1/projects/${orgAProject.id}/milestones`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${viewerToken}`,
+        "x-organization-id": orgAId,
+      },
+      body: { title: "Viewer Forbidden Milestone" },
+    })
+    assert.strictEqual(postRes.status, 403, "Viewer must be denied milestone creation")
+
+    // Viewer cannot update milestone
+    const patchRes = await api(`/api/v1/projects/${orgAProject.id}/milestones/${orgAMilestoneId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${viewerToken}`,
+        "x-organization-id": orgAId,
+      },
+      body: { title: "Viewer Forbidden Update" },
+    })
+    assert.strictEqual(patchRes.status, 403, "Viewer must be denied milestone update")
+
+    // Viewer cannot delete milestone
+    const delRes = await api(`/api/v1/projects/${orgAProject.id}/milestones/${orgAMilestoneId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${viewerToken}`,
+        "x-organization-id": orgAId,
+      },
+    })
+    assert.strictEqual(delRes.status, 403, "Viewer must be denied milestone deletion")
+
+    // Viewer CAN read milestones
+    const getRes = await api(`/api/v1/projects/${orgAProject.id}/milestones`, {
+      headers: {
+        Authorization: `Bearer ${viewerToken}`,
+        "x-organization-id": orgAId,
+      },
+    })
+    assert.strictEqual(getRes.status, 200, "Viewer can read milestones")
   })
 
   // 6. Mass Assignment Security (Section 6)
@@ -371,7 +519,7 @@ async function runTests() {
   await test("7.3 NoSQL operator in body is sanitized", async () => {
     const res = await api("/api/v1/auth/login", {
       method: "POST",
-      body: { email: { $gt: "" }, password: "password123" },
+      body: { email: { $gt: "" }, password: "Password123!" },
     })
     // Since $gt is stripped, email becomes undefined -> 401
     assert.strictEqual(res.status, 401)
@@ -465,7 +613,7 @@ async function runTests() {
     // Generate a second token for Org A user
     const loginRes = await api("/api/v1/auth/login", {
       method: "POST",
-      body: { email: "alex@acme.io", password: "password123" },
+      body: { email: "alex@acme.io", password: "Password123!" },
     })
     const activeToken = getCookie(loginRes.headers, "accessToken")
 
@@ -484,13 +632,48 @@ async function runTests() {
     assert.strictEqual(meRes.data.message, "Session revoked")
   })
 
+  // 10. Password Recovery Security
+  await test("10.1 Recovery denied in production or when disabled with zero token leakage", async () => {
+    const forgotRes = await api("/api/v1/auth/forgot-password", {
+      method: "POST",
+      headers: { "x-test-disable-recovery": "true" },
+      body: { email: "alex@acme.io" },
+    })
+    assert.strictEqual(forgotRes.status, 403)
+    assert.strictEqual(forgotRes.data.devResetToken, undefined, "No token leaked when disabled")
+    assert.match(forgotRes.data.message, /Self-service password recovery is unavailable/i)
+
+    const resetRes = await api("/api/v1/auth/reset-password", {
+      method: "POST",
+      headers: { "x-test-disable-recovery": "true" },
+      body: { token: "some-token", password: "NewStrongPassword123!" },
+    })
+    assert.strictEqual(resetRes.status, 403)
+    assert.match(resetRes.data.message, /Self-service password recovery is unavailable/i)
+  })
+
   console.log("\n==================================================")
   console.log(`AUDIT TEST RESULTS: ${passed} PASSED, ${failed} FAILED`)
   console.log("==================================================")
   if (failed > 0) process.exit(1)
 }
 
-runTests().catch((err) => {
-  console.error("Test runner encountered fatal error:", err)
-  process.exit(1)
-})
+runTests()
+  .catch((err) => {
+    console.error("Test runner encountered fatal error:", err)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await mongoose.disconnect()
+    if (serverProcess && serverProcess.exitCode === null && serverProcess.signalCode === null) {
+      const shutdown = new Promise((resolve) => {
+        serverProcess.once("exit", resolve)
+        serverProcess.kill("SIGTERM")
+      })
+      const timeout = setTimeout(() => {
+        serverProcess.kill("SIGKILL")
+      }, 10000)
+      await shutdown
+      clearTimeout(timeout)
+    }
+  })

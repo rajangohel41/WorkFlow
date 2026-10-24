@@ -6,6 +6,10 @@ export function slugify(value) {
     .replace(/(^-|-$)/g, "")
 }
 
+export function isStrongPassword(password) {
+  return typeof password === "string" && /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password)
+}
+
 export function initials(name = "") {
   return name
     .split(/\s+/)

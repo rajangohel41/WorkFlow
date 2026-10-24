@@ -4,16 +4,17 @@ import {
   Paperclip,
   Plus,
   Search,
-} from "lucide-react"
-import { useState } from "react"
-import { useParams } from "react-router-dom"
-import { useAppStore } from "../../store/useAppStore.js"
+} from "lucide-react";
+import { useState } from "react";
+import { useParams } from "react-router-dom";
+import { useAppStore } from "../../store/useAppStore.js";
 import {
   useProject,
   useTasks,
   useWorkflowMutations,
-} from "../../hooks/useWorkflowQueries.js"
-import { Avatar, Badge, Button } from "../../components/ui/index.jsx"
+} from "../../hooks/useWorkflowQueries.js";
+import { Avatar, Badge, Button } from "../../components/ui/index.jsx";
+import { getTaskStatusPermission } from "../../utils/taskPermissions.js";
 
 const definitions = [
   ["Backlog", "slate"],
@@ -21,22 +22,34 @@ const definitions = [
   ["In Progress", "indigo"],
   ["In Review", "amber"],
   ["Done", "green"],
-]
+];
 
 function TaskCard({ task, onStatusChange }) {
-  const setTask = useAppStore((state) => state.setTask)
+  const setTask = useAppStore((state) => state.setTask);
+  const user = useAppStore((state) => state.user);
+  const { canChange, reason } = getTaskStatusPermission(task, user);
+
   return (
     <article
-      className="kanban-card"
-      draggable
-      onDragStart={(event) => event.dataTransfer.setData("text/task", task.id)}
+      className={`kanban-card ${!canChange ? "kanban-card-locked" : ""}`}
+      draggable={canChange}
+      onDragStart={(event) => {
+        if (!canChange) {
+          event.preventDefault();
+          return;
+        }
+        event.dataTransfer.setData("text/task", task.id);
+      }}
       onClick={() => setTask(task)}
+      title={!canChange ? reason : undefined}
     >
       <div className="task-id">
         <span>{task.id}</span>
         <select
           aria-label={`Change status for ${task.title}`}
           value={task.status}
+          disabled={!canChange}
+          title={!canChange ? reason : "Change status"}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onStatusChange(task.id, event.target.value)}
         >
@@ -78,23 +91,25 @@ function TaskCard({ task, onStatusChange }) {
         )}
       </div>
     </article>
-  )
+  );
 }
 
 export default function BoardPage() {
-  const { projectId } = useParams()
-  const setCreateModal = useAppStore((state) => state.setCreateModal)
-  const [query, setQuery] = useState("")
+  const { projectId } = useParams();
+  const setCreateModal = useAppStore((state) => state.setCreateModal);
+  const user = useAppStore((state) => state.user);
+  const addToast = useAppStore((state) => state.addToast);
+  const [query, setQuery] = useState("");
 
-  const { data: project } = useProject(projectId)
-  const { data: tasksData } = useTasks({ projectId })
-  const { updateTask } = useWorkflowMutations()
+  const { data: project } = useProject(projectId);
+  const { data: tasksData } = useTasks({ projectId });
+  const { updateTask } = useWorkflowMutations();
 
-  const tasks = tasksData?.tasks || []
+  const tasks = tasksData?.tasks || [];
 
   const handleStatusChange = (taskId, status) => {
-    updateTask.mutate({ id: taskId, payload: { status } })
-  }
+    updateTask.mutate({ id: taskId, payload: { status } });
+  };
 
   const columns = definitions.map(([name, tone]) => ({
     name,
@@ -105,7 +120,7 @@ export default function BoardPage() {
         (task.title.toLowerCase().includes(query.toLowerCase()) ||
           task.id.toLowerCase().includes(query.toLowerCase())),
     ),
-  }))
+  }));
 
   return (
     <div className="board">
@@ -119,7 +134,10 @@ export default function BoardPage() {
           />
         </div>
         <span className="spacer" />
-        <Button icon={Plus} onClick={() => setCreateModal("task")}>
+        <Button
+          icon={Plus}
+          onClick={() => setCreateModal("task", { projectId })}
+        >
           Add task
         </Button>
       </div>
@@ -130,10 +148,25 @@ export default function BoardPage() {
             key={column.name}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
-              event.preventDefault()
-              const taskId = event.dataTransfer.getData("text/task")
+              event.preventDefault();
+              const taskId = event.dataTransfer.getData("text/task");
               if (taskId) {
-                handleStatusChange(taskId, column.name)
+                const targetTask = tasks.find(
+                  (t) => t.id === taskId || t._id === taskId,
+                );
+                const { canChange, reason } = getTaskStatusPermission(
+                  targetTask,
+                  user,
+                );
+                if (!canChange) {
+                  addToast(
+                    reason ||
+                      "Only the assigned team member can change this task's status.",
+                    "error",
+                  );
+                  return;
+                }
+                handleStatusChange(taskId, column.name);
               }
             }}
           >
@@ -146,7 +179,9 @@ export default function BoardPage() {
               <button
                 className="column-add"
                 aria-label={`Add task to ${column.name}`}
-                onClick={() => setCreateModal("task")}
+                onClick={() =>
+                  setCreateModal("task", { projectId, status: column.name })
+                }
               >
                 <Plus size={16} />
               </button>
@@ -161,7 +196,9 @@ export default function BoardPage() {
               ))}
               <button
                 className="add-task"
-                onClick={() => setCreateModal("task")}
+                onClick={() =>
+                  setCreateModal("task", { projectId, status: column.name })
+                }
               >
                 <Plus size={15} /> Add task
               </button>
@@ -170,5 +207,5 @@ export default function BoardPage() {
         ))}
       </div>
     </div>
-  )
+  );
 }

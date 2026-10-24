@@ -26,6 +26,3 @@ export function randomToken() {
   return crypto.randomBytes(32).toString("hex")
 }
 
-export function randomCode() {
-  return String(Math.floor(100000 + Math.random() * 900000))
-}

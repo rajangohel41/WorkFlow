@@ -12,12 +12,12 @@ import { setOrganizationId } from "../api/client.js"
 export default function OnboardingPage() {
   const [step, setStep] = useState(1)
   const [teamType, setTeamType] = useState("Product & engineering")
-  const [workspaceName, setWorkspaceName] = useState("Acme Technologies")
-  const [workspaceSlug, setWorkspaceSlug] = useState("acme")
+  const [workspaceName, setWorkspaceName] = useState("")
+  const [workspaceSlug, setWorkspaceSlug] = useState("")
   const [projectType, setProjectType] = useState("Kanban")
-  const [projectName, setProjectName] = useState("Website Redesign")
+  const [projectName, setProjectName] = useState("")
   const [invite, setInvite] = useState("")
-  const [invites, setInvites] = useState(["sarah@acme.io", "rahul@acme.io"])
+  const [invites, setInvites] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 

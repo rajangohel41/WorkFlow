@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node tests/browser_branding.test.js && node tests/assignee_status_ui.test.js && node tests/frontend_automation.test.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

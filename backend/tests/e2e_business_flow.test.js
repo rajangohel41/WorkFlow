@@ -1,6 +1,29 @@
 import assert from "node:assert"
+import { createServer } from "node:http"
+import mongoose from "mongoose"
+import { app } from "../src/app.js"
+import { connectDb } from "../src/db/connect.js"
 
-const BASE_URL = "http://localhost:5000"
+let server = null
+let startedOurServer = false
+const TEST_PORT = process.env.WORKFLOW_TEST_PORT ? Number(process.env.WORKFLOW_TEST_PORT) : 5105
+let BASE_URL = `http://localhost:${TEST_PORT}`
+
+async function ensureServer() {
+  try {
+    const probe = await fetch("http://localhost:5000/api/v1/health")
+    if (probe.ok) {
+      BASE_URL = "http://localhost:5000"
+      return
+    }
+  } catch {}
+
+  await connectDb()
+  server = createServer(app)
+  await new Promise((resolve) => server.listen(TEST_PORT, resolve))
+  startedOurServer = true
+  BASE_URL = `http://localhost:${TEST_PORT}`
+}
 
 async function api(endpoint, options = {}) {
   const headers = { ...options.headers }
@@ -28,8 +51,11 @@ function getCookie(headers, name) {
   return match ? match[1] : null
 }
 
+
 async function runE2E() {
+  await ensureServer()
   console.log("=== STARTING FULL END-TO-END BUSINESS FLOW TEST ===")
+
   const unique = Date.now()
   const userEmail = `e2e-user-${unique}@workflow.io`
   const password = "StrongPassword123!"
@@ -196,7 +222,15 @@ async function runE2E() {
   console.log("=== FULL END-TO-END BUSINESS FLOW VERIFIED SUCCESSFULLY ===")
 }
 
-runE2E().catch((err) => {
+try {
+  await runE2E()
+} catch (err) {
   console.error("E2E test failed:", err)
-  process.exit(1)
-})
+  process.exitCode = 1
+} finally {
+  if (server && startedOurServer) {
+    await new Promise((resolve) => server.close(resolve))
+    await mongoose.disconnect()
+  }
+  process.exit(process.exitCode || 0)
+}

@@ -11,4 +11,11 @@ export const projectService = {
   remove: (projectId) => api.delete(`/projects/${projectId}`),
   toggleFavorite: (projectId) => api.post(`/projects/${projectId}/favorite`),
   activity: (projectId) => api.get(`/projects/${projectId}/activity`),
+  milestones: (projectId) => api.get(`/projects/${projectId}/milestones`),
+  createMilestone: (projectId, payload) =>
+    api.post(`/projects/${projectId}/milestones`, payload),
+  updateMilestone: (projectId, milestoneId, payload) =>
+    api.patch(`/projects/${projectId}/milestones/${milestoneId}`, payload),
+  removeMilestone: (projectId, milestoneId) =>
+    api.delete(`/projects/${projectId}/milestones/${milestoneId}`),
 }

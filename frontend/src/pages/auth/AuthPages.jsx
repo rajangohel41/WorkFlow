@@ -7,28 +7,43 @@ import {
   LockKeyhole,
   Mail,
   Workflow,
-} from "lucide-react"
-import { useState } from "react"
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { useQueryClient } from "@tanstack/react-query"
-import { Button, Field } from "../../components/ui/index.jsx"
-import { authService } from "../../services/authService.js"
-import { useAppStore } from "../../store/useAppStore.js"
-import { queryKeys } from "../../hooks/queryKeys.js"
+} from "lucide-react";
+import { useState } from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useQueryClient } from "@tanstack/react-query";
+import { Button, Field } from "../../components/ui/index.jsx";
+import { authService } from "../../services/authService.js";
+import { useAppStore } from "../../store/useAppStore.js";
+import { queryKeys } from "../../hooks/queryKeys.js";
+import { setOrganizationId } from "../../api/client.js";
+
+const strongPasswordRegex =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
 
 const loginSchema = z.object({
   email: z.email("Enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-})
+});
 
 const signupSchema = z.object({
   name: z.string().min(2, "Enter your full name"),
   email: z.email("Enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-})
+  password: z
+    .string()
+    .min(12, "Password must contain at least 12 characters")
+    .refine(
+      (value) => strongPasswordRegex.test(value),
+      "Password must include uppercase, lowercase, a number, and a symbol",
+    ),
+});
 
 function AuthCard({ eyebrow, title, subtitle, children }) {
   return (
@@ -44,23 +59,24 @@ function AuthCard({ eyebrow, title, subtitle, children }) {
       <p>{subtitle}</p>
       {children}
     </div>
-  )
+  );
 }
 
 export function LoginPage() {
-  const [show, setShow] = useState(false)
-  const [formError, setFormError] = useState("")
-  const navigate = useNavigate()
-  const location = useLocation()
-  const queryClient = useQueryClient()
-  const setAuth = useAppStore((s) => s.setAuth)
+  const [show, setShow] = useState(false);
+  const [formError, setFormError] = useState("");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const setAuth = useAppStore((s) => s.setAuth);
+  const setOrganization = useAppStore((s) => s.setOrganization);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(loginSchema),
-  })
+  });
   return (
     <AuthCard
       eyebrow="WELCOME BACK"
@@ -69,17 +85,26 @@ export function LoginPage() {
     >
       <form
         onSubmit={handleSubmit(async (values) => {
-          setFormError("")
+          setFormError("");
           try {
-            const result = await authService.login(values)
-            setAuth(result.user)
-            await queryClient.invalidateQueries({ queryKey: queryKeys.me })
-            const me = await authService.me()
-            if (!me.user.emailVerified) navigate("/verify-email")
-            else if (!me.organizations?.length) navigate("/onboarding")
-            else navigate(location.state?.from || "/dashboard")
+            const result = await authService.login(values);
+            setAuth(result.user);
+            await queryClient.invalidateQueries({ queryKey: queryKeys.me });
+            const me = await authService.me();
+            if (!me.organizations?.length) {
+              navigate("/onboarding");
+            } else {
+              const currentId = useAppStore.getState().organizationId;
+              const organization =
+                me.organizations.find((o) => o.id === currentId) ||
+                me.organizations.find((o) => o.role !== "Owner") ||
+                me.organizations[0];
+              setOrganizationId(organization.id);
+              setOrganization(organization);
+              navigate(location.state?.from || "/dashboard");
+            }
           } catch (error) {
-            setFormError(error.message || "Unable to sign in")
+            setFormError(error.message || "Unable to sign in");
           }
         })}
       >
@@ -131,19 +156,20 @@ export function LoginPage() {
         New to WorkFlow? <Link to="/signup">Create an account</Link>
       </p>
     </AuthCard>
-  )
+  );
 }
 
 export function SignupPage() {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const setAuth = useAppStore((s) => s.setAuth)
-  const [formError, setFormError] = useState("")
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const setAuth = useAppStore((s) => s.setAuth);
+  const setOrganization = useAppStore((s) => s.setOrganization);
+  const [formError, setFormError] = useState("");
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm({ resolver: zodResolver(signupSchema) })
+  } = useForm({ resolver: zodResolver(signupSchema) });
   return (
     <AuthCard
       eyebrow="START BUILDING"
@@ -152,19 +178,27 @@ export function SignupPage() {
     >
       <form
         onSubmit={handleSubmit(async (values) => {
-          setFormError("")
+          setFormError("");
           try {
-            const result = await authService.register(values)
-            setAuth(result.user)
-            await queryClient.invalidateQueries({ queryKey: queryKeys.me })
-            navigate("/verify-email")
+            const result = await authService.register(values);
+            setAuth(result.user);
+            if (result.organization) {
+              setOrganizationId(result.organization.id);
+              setOrganization({ ...result.organization, role: "Owner" });
+            }
+            await queryClient.invalidateQueries({ queryKey: queryKeys.me });
+            navigate(result.organization ? "/dashboard" : "/onboarding");
           } catch (error) {
-            setFormError(error.message || "Unable to create account")
+            setFormError(error.message || "Unable to create account");
           }
         })}
       >
         <Field label="Full name" error={errors.name?.message}>
-          <input className="input" placeholder="Alex Kumar" {...register("name")} />
+          <input
+            className="input"
+            placeholder="Jane Smith"
+            {...register("name")}
+          />
         </Field>
         <Field label="Work email" error={errors.email?.message}>
           <input
@@ -176,7 +210,7 @@ export function SignupPage() {
         </Field>
         <Field
           label="Password"
-          hint="Use at least 8 characters."
+          hint="Use at least 12 characters with uppercase, lowercase, a number, and a symbol."
           error={errors.password?.message}
         >
           <input
@@ -199,23 +233,31 @@ export function SignupPage() {
         Already have an account? <Link to="/login">Sign in</Link>
       </p>
     </AuthCard>
-  )
+  );
 }
 
 export function ForgotPasswordPage({ reset = false }) {
-  const [sent, setSent] = useState(false)
-  const [params] = useSearchParams()
-  const token = params.get("token")
-  const [formError, setFormError] = useState("")
+  const [sent, setSent] = useState(false);
+  const [params] = useSearchParams();
+  const token = params.get("token");
+  const [formError, setFormError] = useState("");
+  if (!reset)
+    return (
+      <AuthCard
+        title="Password recovery unavailable"
+        subtitle="WorkFlow does not send password recovery emails. If you can sign in, update your password under Settings > Security. Otherwise, contact system support."
+      >
+        <Link className="back-link" to="/login">
+          <ArrowLeft size={15} />
+          Back to sign in
+        </Link>
+      </AuthCard>
+    );
   if (sent)
     return (
       <AuthCard
-        title={reset ? "Password updated" : "Check your inbox"}
-        subtitle={
-          reset
-            ? "Your password has been reset successfully."
-            : "If an account exists for that email, we sent a reset link."
-        }
+        title="Password updated"
+        subtitle="Your password has been reset successfully."
       >
         <div className="success-mark">
           <CheckCircle2 size={30} />
@@ -224,68 +266,52 @@ export function ForgotPasswordPage({ reset = false }) {
           Back to sign in
         </Button>
       </AuthCard>
-    )
+    );
   return (
     <AuthCard
-      title={reset ? "Set a new password" : "Reset your password"}
-      subtitle={
-        reset
-          ? "Choose a secure password you haven't used before."
-          : "Enter your email and we'll send you a reset link."
-      }
+      title="Set a new password"
+      subtitle="Choose a secure password you haven't used before."
     >
       <form
         onSubmit={async (event) => {
-          event.preventDefault()
-          setFormError("")
-          const data = Object.fromEntries(new FormData(event.currentTarget))
+          event.preventDefault();
+          setFormError("");
+          const data = Object.fromEntries(new FormData(event.currentTarget));
           try {
-            if (reset) {
-              if (data.password !== data.confirm) {
-                setFormError("Passwords do not match")
-                return
-              }
-              await authService.resetPassword({
-                token: token || data.token,
-                password: data.password,
-              })
-            } else {
-              await authService.forgotPassword(data.email)
+            if (!strongPasswordRegex.test(String(data.password || ""))) {
+              setFormError(
+                "Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+              );
+              return;
             }
-            setSent(true)
+            if (data.password !== data.confirm) {
+              setFormError("Passwords do not match");
+              return;
+            }
+            await authService.resetPassword({
+              token: token || data.token,
+              password: data.password,
+            });
+            setSent(true);
           } catch (error) {
-            setFormError(error.message || "Request failed")
+            setFormError(error.message || "Request failed");
           }
         }}
       >
-        {reset ? (
-          <>
-            {!token && (
-              <Field label="Reset token">
-                <input name="token" className="input" required />
-              </Field>
-            )}
-            <Field label="New password">
-              <input name="password" className="input" type="password" required />
-            </Field>
-            <Field label="Confirm password">
-              <input name="confirm" className="input" type="password" required />
-            </Field>
-          </>
-        ) : (
-          <Field label="Email address">
-            <input
-              name="email"
-              className="input"
-              type="email"
-              placeholder="you@company.com"
-              required
-            />
+        {!token && (
+          <Field label="Reset token">
+            <input name="token" className="input" required />
           </Field>
         )}
+        <Field label="New password">
+          <input name="password" className="input" type="password" required />
+        </Field>
+        <Field label="Confirm password">
+          <input name="confirm" className="input" type="password" required />
+        </Field>
         {formError && <p className="form-error">{formError}</p>}
         <Button className="full" type="submit">
-          {reset ? "Reset password" : "Send reset link"}
+          Reset password
         </Button>
       </form>
       <Link className="back-link" to="/login">
@@ -293,71 +319,5 @@ export function ForgotPasswordPage({ reset = false }) {
         Back to sign in
       </Link>
     </AuthCard>
-  )
-}
-
-export function VerifyPage() {
-  const [resent, setResent] = useState(false)
-  const [code, setCode] = useState(["", "", "", "", "", ""])
-  const [error, setError] = useState("")
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const profile = useAppStore((s) => s.profile)
-  const updateDigits = (index, value) => {
-    const next = [...code]
-    next[index] = value.slice(-1)
-    setCode(next)
-  }
-  return (
-    <AuthCard
-      title="Verify your email"
-      subtitle={`We've sent a six-digit verification code to ${profile.email || "your email"}.`}
-    >
-      <div className="otp">
-        {code.map((digit, index) => (
-          <input
-            key={index}
-            value={digit}
-            onChange={(event) => updateDigits(index, event.target.value)}
-            maxLength="1"
-            aria-label={`Digit ${index + 1}`}
-          />
-        ))}
-      </div>
-      {error && <p className="form-error">{error}</p>}
-      <Button
-        className="full"
-        onClick={async () => {
-          setError("")
-          try {
-            await authService.verifyEmail(code.join(""))
-            await queryClient.invalidateQueries({ queryKey: queryKeys.me })
-            navigate("/onboarding")
-          } catch (err) {
-            setError(err.message || "Invalid code")
-          }
-        }}
-      >
-        Verify email
-      </Button>
-      <p className="auth-switch">
-        {resent ? (
-          "A new code was sent."
-        ) : (
-          <>
-            Didn't receive a code?{" "}
-            <button
-              type="button"
-              onClick={async () => {
-                await authService.resendVerification()
-                setResent(true)
-              }}
-            >
-              Resend code
-            </button>
-          </>
-        )}
-      </p>
-    </AuthCard>
-  )
+  );
 }
