@@ -232,6 +232,8 @@ WorkFlow is designed to support both persistent container hosting (e.g., Render,
 - [ ] SAML 2.0 / Single Sign-On (SSO) enterprise integrations
 - [ ] GitHub & GitLab pull request synchronization
 
+<!-- Deployment trigger -->
+
 ---
 
 ## License
