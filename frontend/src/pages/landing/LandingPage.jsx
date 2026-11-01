@@ -23,12 +23,15 @@ import {
   ShieldCheck,
   TrendingUp,
   Cpu,
+  Menu,
+  X,
 } from "lucide-react";
 import { useAppStore } from "../../store/useAppStore.js";
 
 export default function LandingPage() {
   const user = useAppStore((state) => state.user);
   const [activeTab, setActiveTab] = useState("kanban");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="landing-container">
@@ -70,7 +73,46 @@ export default function LandingPage() {
               </>
             )}
           </div>
+
+          <button
+            type="button"
+            className="landing-mobile-toggle"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileMenuOpen}
+          >
+            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </div>
+
+        {mobileMenuOpen && (
+          <div className="landing-mobile-drawer" role="dialog" aria-label="Mobile Navigation Menu">
+            <nav className="landing-mobile-nav">
+              <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+              <a href="#solutions" onClick={() => setMobileMenuOpen(false)}>Solutions</a>
+              <a href="#security" onClick={() => setMobileMenuOpen(false)}>Security</a>
+              <Link to="/demo" onClick={() => setMobileMenuOpen(false)} className="demo-link-highlight">
+                <Sparkles size={14} /> Try Live Demo
+              </Link>
+            </nav>
+            <div className="landing-mobile-auth">
+              {user ? (
+                <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary full">
+                  Go to Dashboard <ArrowRight size={15} />
+                </Link>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-secondary full">
+                    Sign In
+                  </Link>
+                  <Link to="/signup" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary full">
+                    Get Started Free <ArrowRight size={14} />
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Hero Section */}

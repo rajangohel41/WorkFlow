@@ -69,7 +69,7 @@ router.get("/", async (req, res, next) => {
           projectId: { $in: projects.map((p) => p._id) },
         },
       },
-      { $group: { _id: "$projectId", tasks: { $push: "$$ROOT" } } },
+      { $group: { _id: "$projectId", tasks: { $push: { status: "$status" } } } },
     ])
     const taskMap = Object.fromEntries(
       taskGroups.map((g) => [g._id.toString(), g.tasks]),

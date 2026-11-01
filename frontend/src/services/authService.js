@@ -15,4 +15,6 @@ export const authService = {
   resetPassword: (payload) => api.post("/auth/reset-password", payload),
   changePassword: (payload) => api.post("/auth/change-password", payload),
   completeOnboarding: (payload) => api.post("/auth/onboarding", payload),
+  googleLogin: (payload) => api.post("/auth/google", payload),
+  linkGoogle: (payload) => api.post("/auth/google/link", payload),
 }

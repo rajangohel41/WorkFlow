@@ -12,7 +12,14 @@ const userSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
-    passwordHash: { type: String, required: true, select: false },
+    passwordHash: {
+      type: String,
+      required: function () {
+        return !this.googleId
+      },
+      select: false,
+    },
+    googleId: { type: String, index: true, sparse: true },
     title: { type: String, default: "" },
     avatarUrl: { type: String, default: "" },
     resetToken: { type: String, select: false },
@@ -36,6 +43,7 @@ userSchema.pre("save", function normalizeEmail(next) {
 })
 
 userSchema.methods.comparePassword = function comparePassword(password) {
+  if (!this.passwordHash) return false
   return argon2.verify(this.passwordHash, password)
 }
 

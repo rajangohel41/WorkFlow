@@ -21,6 +21,8 @@ const suites = [
   "persistence_writeback.test.js",
   "assignee_status_rbac.test.js",
   "vercel_runtime_verification.test.js",
+  "password_recovery.test.js",
+  "google_auth.test.js",
 ]
 
 

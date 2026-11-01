@@ -2,6 +2,7 @@ import express from "express"
 import cors from "cors"
 import cookieParser from "cookie-parser"
 import helmet from "helmet"
+import compression from "compression"
 import rateLimit from "express-rate-limit"
 import path from "node:path"
 import fs from "node:fs"
@@ -84,6 +85,7 @@ app.use(
 
 app.use(express.json({ limit: "2mb" }))
 app.use(cookieParser())
+app.use(compression({ threshold: 1024 }))
 app.use(sanitizeMiddleware)
 
 // Ensure MongoDB connection is initialized before handling requests (crucial for serverless environments)
@@ -167,6 +169,8 @@ app.get("/uploads/:filename", requireAuth, async (req, res, next) => {
 const api = express.Router()
 api.use("/auth/login", authLimiter)
 api.use("/auth/register", authLimiter)
+api.use("/auth/google", authLimiter)
+api.use("/auth/google/link", authLimiter)
 api.use("/auth/forgot-password", authLimiter)
 api.use("/auth/reset-password", authLimiter)
 

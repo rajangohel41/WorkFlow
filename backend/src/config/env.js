@@ -40,7 +40,16 @@ export const env = {
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || "dev-refresh-secret-change-in-production",
   jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES || "15m",
   jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES || "7d",
-  enablePasswordRecovery: process.env.ENABLE_PASSWORD_RECOVERY === "true",
+  enablePasswordRecovery:
+    Boolean(process.env.RESEND_API_KEY) ||
+    process.env.ENABLE_PASSWORD_RECOVERY === "true",
+  resendApiKey: process.env.RESEND_API_KEY || "",
+  emailFrom: process.env.EMAIL_FROM || "WorkFlow <onboarding@resend.dev>",
+  appUrl:
+    process.env.APP_URL ||
+    process.env.FRONTEND_URL ||
+    (process.env.CLIENT_ORIGIN || "http://localhost:5173").split(",")[0].trim(),
+  googleClientId: process.env.GOOGLE_CLIENT_ID || "",
 }
 
 if (process.env.NODE_ENV === "production") {

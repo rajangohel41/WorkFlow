@@ -317,6 +317,9 @@ function Header() {
 
 export default function DashboardLayout() {
   useSocket();
+  const mobileNav = useAppStore((s) => s.mobileNav);
+  const setMobileNav = useAppStore((s) => s.setMobileNav);
+
   useEffect(() => {
     const close = (event) => {
       if (event.key === "Escape") {
@@ -325,13 +328,22 @@ export default function DashboardLayout() {
         useAppStore.getState().setCreateModal(null);
         useAppStore.getState().setCreateMenu(false);
         useAppStore.getState().setWorkspaceMenu(false);
+        useAppStore.getState().setMobileNav(false);
       }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, []);
+
   return (
     <div className="app-shell">
+      {mobileNav && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setMobileNav(false)}
+          aria-label="Close navigation overlay"
+        />
+      )}
       <Sidebar />
       <div className="app-area">
         <Header />

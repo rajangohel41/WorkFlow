@@ -116,12 +116,17 @@ async function loadTaskContext(req) {
 }
 
 async function fullTaskPayload(task, project) {
-  const assignee = task.assigneeId
-    ? await User.findById(task.assigneeId)
-    : null
-  const comments = await Comment.find({ taskId: task._id })
-    .sort({ createdAt: 1 })
-    .populate("authorId")
+  const [assignee, comments] = await Promise.all([
+    task.assigneeId
+      ? User.findById(task.assigneeId)
+          .select("name email avatarUrl title")
+          .lean()
+      : null,
+    Comment.find({ taskId: task._id })
+      .sort({ createdAt: 1 })
+      .populate("authorId", "name email")
+      .lean(),
+  ])
   const commentsList = comments.map((c) => ({
     id: c._id.toString(),
     author: {

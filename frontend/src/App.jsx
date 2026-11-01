@@ -37,7 +37,7 @@ const CalendarPage = lazy(() => import("./pages/CalendarPage.jsx"));
 const TeamPage = lazy(() => import("./pages/TeamPage.jsx"));
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage.jsx"));
 const SettingsPage = lazy(() => import("./pages/settings/SettingsPage.jsx"));
-import ErrorPage from "./pages/ErrorPage.jsx";
+const ErrorPage = lazy(() => import("./pages/ErrorPage.jsx"));
 const OnboardingPage = lazy(() => import("./pages/OnboardingPage.jsx"));
 const LoginPage = lazy(() =>
   import("./pages/auth/AuthPages.jsx").then((m) => ({
@@ -121,8 +121,33 @@ export default function App() {
       <RouteTitleTracker />
       <Suspense
         fallback={
-          <div className="page loading-state">
-            <p>Loading...</p>
+          <div
+            className="page loading-state"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: "45vh",
+              gap: "1rem",
+            }}
+          >
+            <div
+              className="loading-spinner"
+              style={{
+                width: "36px",
+                height: "36px",
+                border: "3px solid rgba(99, 102, 241, 0.15)",
+                borderTopColor: "var(--primary, #6366f1)",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }}
+              role="status"
+              aria-label="Loading page"
+            />
+            <p style={{ color: "var(--muted, #64748b)", fontSize: "0.875rem", margin: 0 }}>
+              Loading...
+            </p>
           </div>
         }
       >

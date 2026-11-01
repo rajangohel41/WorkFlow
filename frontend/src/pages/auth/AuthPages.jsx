@@ -25,6 +25,7 @@ import { authService } from "../../services/authService.js";
 import { useAppStore } from "../../store/useAppStore.js";
 import { queryKeys } from "../../hooks/queryKeys.js";
 import { setOrganizationId } from "../../api/client.js";
+import { GoogleSignInButton } from "../../components/auth/GoogleSignInButton.jsx";
 
 const strongPasswordRegex =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
@@ -63,8 +64,84 @@ function AuthCard({ eyebrow, title, subtitle, children }) {
   );
 }
 
+function AccountLinkingCard({ linkData, onCancel, onSuccess }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!password) {
+      setError("Please enter your existing password");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const result = await authService.googleLogin({
+        idToken: linkData.idToken,
+        password,
+      });
+      onSuccess(result);
+    } catch (err) {
+      setError(err.message || "Failed to link account");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AuthCard
+      eyebrow="SECURITY VERIFICATION"
+      title="Link Google Account"
+      subtitle={`An account with ${linkData.email} already exists.`}
+    >
+      <div
+        style={{
+          marginBottom: "1.25rem",
+          padding: "0.85rem 1rem",
+          borderRadius: "0.5rem",
+          backgroundColor: "rgba(99, 102, 241, 0.08)",
+          border: "1px solid rgba(99, 102, 241, 0.2)",
+          fontSize: "0.8125rem",
+          color: "var(--color-text, #334155)",
+          lineHeight: 1.5,
+        }}
+      >
+        To prevent unauthorized account takeover, please verify your ownership by entering your existing password. Once linked, you can sign in anytime using either Google or your password.
+      </div>
+      <form onSubmit={handleSubmit}>
+        <Field label="Account Password" error={error}>
+          <PasswordInput
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            autoFocus
+          />
+        </Field>
+        {error && <p className="form-error">{error}</p>}
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem" }}>
+          <Button type="submit" loading={loading} className="full">
+            Link & Sign In <ArrowRight size={16} />
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onCancel}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </AuthCard>
+  );
+}
+
 export function LoginPage() {
   const [formError, setFormError] = useState("");
+  const [linkData, setLinkData] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -77,6 +154,35 @@ export function LoginPage() {
   } = useForm({
     resolver: zodResolver(loginSchema),
   });
+
+  const handlePostAuthSuccess = async (result) => {
+    setAuth(result.user);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.me });
+    const me = await authService.me();
+    if (!me.organizations?.length) {
+      navigate("/onboarding");
+    } else {
+      const currentId = useAppStore.getState().organizationId;
+      const organization =
+        me.organizations.find((o) => o.id === currentId) ||
+        me.organizations.find((o) => o.role !== "Owner") ||
+        me.organizations[0];
+      setOrganizationId(organization.id);
+      setOrganization(organization);
+      navigate(location.state?.from || "/dashboard");
+    }
+  };
+
+  if (linkData) {
+    return (
+      <AccountLinkingCard
+        linkData={linkData}
+        onCancel={() => setLinkData(null)}
+        onSuccess={handlePostAuthSuccess}
+      />
+    );
+  }
+
   return (
     <AuthCard
       eyebrow="WELCOME BACK"
@@ -88,21 +194,7 @@ export function LoginPage() {
           setFormError("");
           try {
             const result = await authService.login(values);
-            setAuth(result.user);
-            await queryClient.invalidateQueries({ queryKey: queryKeys.me });
-            const me = await authService.me();
-            if (!me.organizations?.length) {
-              navigate("/onboarding");
-            } else {
-              const currentId = useAppStore.getState().organizationId;
-              const organization =
-                me.organizations.find((o) => o.id === currentId) ||
-                me.organizations.find((o) => o.role !== "Owner") ||
-                me.organizations[0];
-              setOrganizationId(organization.id);
-              setOrganization(organization);
-              navigate(location.state?.from || "/dashboard");
-            }
+            await handlePostAuthSuccess(result);
           } catch (error) {
             setFormError(error.message || "Unable to sign in");
           }
@@ -142,6 +234,37 @@ export function LoginPage() {
           Sign in <ArrowRight size={16} />
         </Button>
       </form>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          margin: "1.25rem 0",
+          color: "var(--muted, #64748b)",
+          fontSize: "0.8125rem",
+        }}
+      >
+        <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border, #e2e8f0)" }} />
+        <span
+          style={{
+            padding: "0 0.75rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            fontSize: "0.75rem",
+            fontWeight: 500,
+          }}
+        >
+          or
+        </span>
+        <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border, #e2e8f0)" }} />
+      </div>
+
+      <GoogleSignInButton
+        text="Continue with Google"
+        onLinkRequired={(data) => setLinkData(data)}
+        onError={(err) => setFormError(err)}
+      />
+
       <p className="auth-switch">
         New to WorkFlow? <Link to="/signup">Create an account</Link>
       </p>
@@ -196,11 +319,41 @@ export function SignupPage() {
   const setAuth = useAppStore((s) => s.setAuth);
   const setOrganization = useAppStore((s) => s.setOrganization);
   const [formError, setFormError] = useState("");
+  const [linkData, setLinkData] = useState(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(signupSchema) });
+
+  const handlePostAuthSuccess = async (result) => {
+    setAuth(result.user);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.me });
+    const me = await authService.me();
+    if (!me.organizations?.length) {
+      navigate("/onboarding");
+    } else {
+      const currentId = useAppStore.getState().organizationId;
+      const organization =
+        me.organizations.find((o) => o.id === currentId) ||
+        me.organizations.find((o) => o.role !== "Owner") ||
+        me.organizations[0];
+      setOrganizationId(organization.id);
+      setOrganization(organization);
+      navigate("/dashboard");
+    }
+  };
+
+  if (linkData) {
+    return (
+      <AccountLinkingCard
+        linkData={linkData}
+        onCancel={() => setLinkData(null)}
+        onSuccess={handlePostAuthSuccess}
+      />
+    );
+  }
+
   return (
     <AuthCard
       eyebrow="START BUILDING"
@@ -259,6 +412,37 @@ export function SignupPage() {
           Create account <ArrowRight size={16} />
         </Button>
       </form>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          margin: "1.25rem 0",
+          color: "var(--muted, #64748b)",
+          fontSize: "0.8125rem",
+        }}
+      >
+        <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border, #e2e8f0)" }} />
+        <span
+          style={{
+            padding: "0 0.75rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            fontSize: "0.75rem",
+            fontWeight: 500,
+          }}
+        >
+          or
+        </span>
+        <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border, #e2e8f0)" }} />
+      </div>
+
+      <GoogleSignInButton
+        text="Continue with Google"
+        onLinkRequired={(data) => setLinkData(data)}
+        onError={(err) => setFormError(err)}
+      />
+
       <p className="auth-switch">
         Already have an account? <Link to="/login">Sign in</Link>
       </p>
@@ -427,7 +611,26 @@ export function ForgotPasswordPage({ reset = false }) {
             autoComplete="new-password"
           />
         </Field>
-        {formError && <p className="form-error">{formError}</p>}
+        {formError && (
+          <div style={{ marginTop: "0.25rem", marginBottom: "0.75rem" }}>
+            <p className="form-error" style={{ marginBottom: "0.5rem" }}>
+              {formError}
+            </p>
+            {formError.toLowerCase().includes("invalid") ||
+            formError.toLowerCase().includes("expired") ? (
+              <Link
+                to="/forgot-password"
+                style={{
+                  fontSize: "0.8125rem",
+                  color: "var(--primary)",
+                  textDecoration: "underline",
+                }}
+              >
+                Request a new reset link
+              </Link>
+            ) : null}
+          </div>
+        )}
         <Button className="full" type="submit">
           Reset password
         </Button>

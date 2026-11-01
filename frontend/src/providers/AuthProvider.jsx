@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import {
   setOrganizationId,
@@ -7,7 +7,8 @@ import {
 } from "../api/client.js";
 import { useAppStore } from "../store/useAppStore.js";
 import { useMe } from "../hooks/useWorkflowQueries.js";
-import ErrorPage from "../pages/ErrorPage.jsx";
+
+const ErrorPage = lazy(() => import("../pages/ErrorPage.jsx"));
 
 export function AuthProvider({ children }) {
   const clearAuth = useAppStore((s) => s.clearAuth);
@@ -69,7 +70,11 @@ export function ProtectedRoute() {
         <Navigate to="/login" replace state={{ from: location.pathname }} />
       );
     }
-    return <ErrorPage type="network" />;
+    return (
+      <Suspense fallback={<div className="auth-loading"><p>Loading…</p></div>}>
+        <ErrorPage type="network" />
+      </Suspense>
+    );
   }
 
   if (!data?.user) {
