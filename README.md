@@ -18,6 +18,8 @@
   - Short-lived JWT access tokens (15m) and long-lived refresh tokens (7d) in `httpOnly` secure cookies with `tokenVersion` session invalidation.
 - **Granular RBAC**: Strict role boundaries (`Owner`, `Admin`, `Manager`, `Member`, `Viewer`) preventing privilege escalation and unauthorized project mutations.
 - **Dynamic Browser Branding**: Dynamic route titles and SVG branding.
+- **Public Interactive Live Demo**: Full zero-login read-only sandbox at `/demo` with isolated demo dataset for instant evaluation.
+- **Modern Landing Page & Auth UX**: Responsive product landing page (`/`), 8-character password security policy, and accessible show/hide eye toggles across all authentication views.
 
 ---
 
@@ -228,6 +230,9 @@ WorkFlow is designed to support both persistent container hosting (e.g., Render,
 - [x] Real-time updates via Socket.IO with multi-instance Redis adapter
 - [x] Direct client uploads to Vercel Blob with private streaming
 - [x] Optimistic concurrency control for task editing
+- [x] Public modern landing page (`/`) and interactive zero-login live demo (`/demo`)
+- [x] Standardized 8-character password security with accessible show/hide eye toggles
+- [x] Integrated password recovery workflow and token validation
 - [ ] Email notifications via Resend / SendGrid
 - [ ] SAML 2.0 / Single Sign-On (SSO) enterprise integrations
 - [ ] GitHub & GitLab pull request synchronization
