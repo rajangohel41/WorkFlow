@@ -25,6 +25,7 @@ import {
   PageHeader,
   ProgressBar,
   Modal,
+  PasswordInput,
 } from "../../components/ui/index.jsx";
 import {
   useCurrentUser,
@@ -312,10 +313,10 @@ function Security() {
     e.preventDefault();
     setError("");
     const strongPasswordRegex =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
     if (!strongPasswordRegex.test(newPassword)) {
       return setError(
-        "New password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+        "New password must be at least 8 characters and include uppercase, lowercase, a number, and a symbol.",
       );
     }
     if (newPassword !== confirmPassword) {
@@ -384,33 +385,33 @@ function Security() {
         <Modal title="Change password" onClose={() => setModalOpen(false)}>
           <form className="modal-form" onSubmit={handleChangePassword}>
             <Field label="Current password">
-              <input
-                type="password"
-                className="input"
+              <PasswordInput
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 required
+                placeholder="Current password"
+                autoComplete="current-password"
               />
             </Field>
             <Field
               label="New password"
-              hint="Minimum 12 characters with uppercase, lowercase, a number, and a symbol"
+              hint="Minimum 8 characters with uppercase, lowercase, a number, and a symbol"
             >
-              <input
-                type="password"
-                className="input"
+              <PasswordInput
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
+                placeholder="New password"
+                autoComplete="new-password"
               />
             </Field>
             <Field label="Confirm new password">
-              <input
-                type="password"
-                className="input"
+              <PasswordInput
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
+                placeholder="Confirm new password"
+                autoComplete="new-password"
               />
             </Field>
             {error && <p className="form-error">{error}</p>}

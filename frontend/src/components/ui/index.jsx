@@ -137,3 +137,6 @@ export function EmptyState({ icon: Icon, title, text, action }) {
 export function Skeleton({ className = "" }) {
   return <div className={`skeleton ${className}`} aria-hidden="true" />
 }
+
+export { PasswordInput } from "./PasswordInput.jsx"
+

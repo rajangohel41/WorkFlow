@@ -57,6 +57,8 @@ const ForgotPasswordPage = lazy(() =>
 const AcceptInvitePage = lazy(() =>
   import("./pages/auth/AcceptInvitePage.jsx"),
 );
+const LandingPage = lazy(() => import("./pages/landing/LandingPage.jsx"));
+const DemoPage = lazy(() => import("./pages/demo/DemoPage.jsx"));
 
 function TaskRoute() {
   const { taskId } = useParams();
@@ -160,7 +162,8 @@ export default function App() {
               <Route path="/error" element={<ErrorPage type="500" />} />
             </Route>
           </Route>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/demo" element={<DemoPage />} />
           <Route
             path="/my-tasks"
             element={<Navigate to="/tasks?view=mine" replace />}

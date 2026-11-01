@@ -20,6 +20,7 @@ export function getRouteTitle(pathname) {
   // Clean trailing slashes
   const path = pathname.replace(/\/+$/, "") || "/"
 
+  if (path === "/demo") return "Live Demo"
   if (path === "/login") return "Sign In"
   if (path === "/signup") return "Create Account"
   if (path === "/forgot-password") return "Forgot Password"

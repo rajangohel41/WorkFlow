@@ -11,6 +11,7 @@ export const authService = {
       "/auth/refresh",
       payload || (getRefreshToken() ? { refreshToken: getRefreshToken() } : {}),
     ),
+  forgotPassword: (payload) => api.post("/auth/forgot-password", payload),
   resetPassword: (payload) => api.post("/auth/reset-password", payload),
   changePassword: (payload) => api.post("/auth/change-password", payload),
   completeOnboarding: (payload) => api.post("/auth/onboarding", payload),

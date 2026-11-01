@@ -7,7 +7,7 @@ export function slugify(value) {
 }
 
 export function isStrongPassword(password) {
-  return typeof password === "string" && /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password)
+  return typeof password === "string" && /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(password)
 }
 
 export function initials(name = "") {

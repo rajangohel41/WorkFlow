@@ -42,7 +42,7 @@ router.post("/register", async (req, res, next) => {
     if (!name || !email || !password || !isStrongPassword(password)) {
       return res.status(422).json({
         message:
-          "Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+          "Password must be at least 8 characters and include uppercase, lowercase, a number, and a symbol.",
       })
     }
 
@@ -277,7 +277,7 @@ router.post("/reset-password", async (req, res, next) => {
     if (!isStrongPassword(password)) {
       return res.status(422).json({
         message:
-          "Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+          "Password must be at least 8 characters and include uppercase, lowercase, a number, and a symbol.",
       })
     }
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex")
@@ -323,7 +323,7 @@ router.post("/change-password", requireAuth, async (req, res, next) => {
     if (!isStrongPassword(newPassword)) {
       return res.status(422).json({
         message:
-          "Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.",
+          "Password must be at least 8 characters and include uppercase, lowercase, a number, and a symbol.",
       })
     }
     user.passwordHash = await hashPassword(newPassword)
