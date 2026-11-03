@@ -138,6 +138,89 @@ function invalidateWorkspace(queryClient) {
   queryClient.invalidateQueries({ queryKey: queryKeys.calendar })
 }
 
+// Field-level freshness & in-flight tracking per task ID
+const taskFieldTimestamps = new Map()
+const taskInFlightCounts = new Map()
+const taskInFlightFields = new Map()
+
+export function recordFieldMutation(taskId, payload, timestamp) {
+  if (!taskId) return
+  if (!taskFieldTimestamps.has(taskId)) {
+    taskFieldTimestamps.set(taskId, {})
+  }
+  const timestamps = taskFieldTimestamps.get(taskId)
+  if (!taskInFlightFields.has(taskId)) {
+    taskInFlightFields.set(taskId, new Set())
+  }
+  const inFlight = taskInFlightFields.get(taskId)
+  const currentCount = taskInFlightCounts.get(taskId) || 0
+  taskInFlightCounts.set(taskId, currentCount + 1)
+
+  for (const key of Object.keys(payload || {})) {
+    timestamps[key] = timestamp
+    inFlight.add(key)
+    if (key === "assigneeEmail" || key === "assigneeId") {
+      timestamps.assignee = timestamp
+      inFlight.add("assignee")
+    }
+  }
+}
+
+export function releaseFieldMutation(taskId, payload) {
+  if (!taskId) return
+  const currentCount = (taskInFlightCounts.get(taskId) || 1) - 1
+  if (currentCount <= 0) {
+    taskInFlightCounts.delete(taskId)
+    taskInFlightFields.delete(taskId)
+  } else {
+    taskInFlightCounts.set(taskId, currentCount)
+  }
+}
+
+export function safeMergeTask(currentTask, serverTask, payloadKeys = [], mutationStartTime = 0) {
+  if (!currentTask) return serverTask
+  if (!serverTask) return currentTask
+
+  const taskId = currentTask.id || currentTask._id
+  const timestamps = taskFieldTimestamps.get(taskId) || {}
+  const inFlight = taskInFlightFields.get(taskId) || new Set()
+
+  const merged = { ...currentTask }
+
+  merged.version = Math.max(currentTask.version || 0, serverTask.version || 0)
+  if (serverTask._id) merged._id = serverTask._id
+  if (serverTask.id) merged.id = serverTask.id
+  if (serverTask.displayId) merged.displayId = serverTask.displayId
+  if (serverTask.projectId) merged.projectId = serverTask.projectId
+  if (serverTask.project) merged.project = serverTask.project
+  if (serverTask.updatedAt) merged.updatedAt = serverTask.updatedAt
+
+  for (const key of payloadKeys) {
+    const lastEdit = timestamps[key] || 0
+    if (lastEdit <= mutationStartTime) {
+      if (key === "assigneeEmail" || key === "assigneeId") {
+        merged.assignee = serverTask.assignee
+        merged.assigneeId = serverTask.assigneeId
+      } else if (serverTask[key] !== undefined) {
+        merged[key] = serverTask[key]
+      }
+    }
+  }
+
+  for (const key of Object.keys(serverTask)) {
+    if (payloadKeys.includes(key)) continue
+    if (key === "version" || key === "_id" || key === "id" || key === "displayId" || key === "updatedAt") continue
+
+    const isFieldInFlight = inFlight.has(key)
+    const lastEdit = timestamps[key] || 0
+    if (!isFieldInFlight && lastEdit <= mutationStartTime) {
+      merged[key] = serverTask[key]
+    }
+  }
+
+  return merged
+}
+
 export function useWorkflowMutations() {
   const queryClient = useQueryClient()
   const addToast = useAppStore((s) => s.addToast)
@@ -245,36 +328,83 @@ export function useWorkflowMutations() {
   const updateTask = useMutation({
     mutationFn: ({ id, payload }) => taskService.update(id, payload),
     onMutate: async ({ id, payload }) => {
+      const mutationTime = Date.now()
+      recordFieldMutation(id, payload, mutationTime)
+
       await queryClient.cancelQueries({ queryKey: ["tasks"] })
-      const previous = queryClient.getQueriesData({ queryKey: ["tasks"] })
+      await queryClient.cancelQueries({ queryKey: queryKeys.task(id) })
+
+      const previousTasks = queryClient.getQueriesData({ queryKey: ["tasks"] })
+      const previousDetail = queryClient.getQueryData(queryKeys.task(id))
+      const previousAppStoreTask = useAppStore.getState().task
+
+      const applyOptimistic = (task) => {
+        if (!task || (task.id !== id && task._id !== id)) return task
+        const updated = { ...task, ...payload }
+        if (payload.assigneeEmail !== undefined) {
+          const membersData = queryClient.getQueryData(queryKeys.members)
+          const matched = membersData?.members?.find((m) => m.email === payload.assigneeEmail)
+          updated.assignee = matched || (payload.assigneeEmail ? { email: payload.assigneeEmail, name: payload.assigneeEmail } : null)
+        }
+        return updated
+      }
+
       queryClient.setQueriesData({ queryKey: ["tasks"] }, (old) => {
         if (!old?.tasks) return old
         return {
           ...old,
-          tasks: old.tasks.map((task) =>
-            task.id === id ? { ...task, ...payload } : task,
-          ),
+          tasks: old.tasks.map(applyOptimistic),
         }
       })
-      return { previous }
+
+      queryClient.setQueryData(queryKeys.task(id), (old) => applyOptimistic(old))
+
+      const currentStoreTask = useAppStore.getState().task
+      if (currentStoreTask && (currentStoreTask.id === id || currentStoreTask._id === id)) {
+        useAppStore.getState().setTask(applyOptimistic(currentStoreTask))
+      }
+
+      return { previousTasks, previousDetail, previousAppStoreTask, mutationTime, id, payload }
     },
-    onSuccess: (task) => {
+    onSuccess: (serverTask, vars, context) => {
+      const id = vars.id
+      const payloadKeys = Object.keys(vars.payload || {})
+      const mutationTime = context?.mutationTime || Date.now()
+
       queryClient.setQueriesData({ queryKey: ["tasks"] }, (old) => {
         if (!old?.tasks) return old
         return {
           ...old,
           tasks: old.tasks.map((item) =>
-            item.id === task.id || item._id === task._id ? task : item,
+            item.id === id || item._id === id
+              ? safeMergeTask(item, serverTask, payloadKeys, mutationTime)
+              : item,
           ),
         }
       })
-      queryClient.setQueriesData({ queryKey: ["task"] }, (old) =>
-        old && (old.id === task.id || old._id === task._id) ? task : old,
+
+      queryClient.setQueryData(queryKeys.task(id), (old) =>
+        safeMergeTask(old, serverTask, payloadKeys, mutationTime),
       )
-      queryClient.setQueryData(queryKeys.task(task.id), task)
+
+      const storeTask = useAppStore.getState().task
+      if (storeTask && (storeTask.id === id || storeTask._id === id)) {
+        useAppStore.getState().setTask(
+          safeMergeTask(storeTask, serverTask, payloadKeys, mutationTime),
+        )
+      }
     },
     onError: (error, vars, context) => {
-      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data))
+      if (context?.previousTasks) {
+        context.previousTasks.forEach(([key, data]) => queryClient.setQueryData(key, data))
+      }
+      if (context?.previousDetail !== undefined) {
+        queryClient.setQueryData(queryKeys.task(vars.id), context.previousDetail)
+      }
+      if (context?.previousAppStoreTask !== undefined) {
+        useAppStore.getState().setTask(context.previousAppStoreTask)
+      }
+
       if (error?.status === 409 || error?.response?.status === 409) {
         addToast(
           "Task was modified concurrently by another session. Refetching latest version...",
@@ -294,8 +424,11 @@ export function useWorkflowMutations() {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
     },
     onSettled: (_data, _error, vars) => {
-      if (vars?.id) {
+      releaseFieldMutation(vars?.id, vars?.payload)
+      const inFlightCount = taskInFlightCounts.get(vars?.id) || 0
+      if (inFlightCount === 0 && vars?.id) {
         queryClient.invalidateQueries({ queryKey: queryKeys.task(vars.id) })
+        queryClient.invalidateQueries({ queryKey: ["tasks"] })
       }
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       queryClient.invalidateQueries({ queryKey: ["analytics", "dashboard"] })

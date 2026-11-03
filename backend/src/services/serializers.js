@@ -43,6 +43,7 @@ export async function serializeProject(project, tasks = [], userId) {
     progress: total ? Math.round((done / total) * 100) : 0,
     tasks: `${done} / ${total}`,
     due: formatDue(project.dueDate),
+    dueDate: project.dueDate || null,
     members: project.memberIds?.map((id) => id.toString()) || [],
     favorite: project.favoriteBy?.some((id) => id.toString() === userId) || false,
     archived: project.archived,

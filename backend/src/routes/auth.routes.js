@@ -9,6 +9,7 @@ import {
   randomToken,
   signAccessToken,
   signRefreshToken,
+  verifyAccessToken,
   verifyRefreshToken,
 } from "../utils/tokens.js"
 import { isStrongPassword, slugify } from "../utils/helpers.js"
@@ -16,16 +17,9 @@ import { requireAuth } from "../middleware/auth.js"
 import { serializeUser } from "../services/serializers.js"
 import { emailService } from "../services/emailService.js"
 import { verifyGoogleIdToken } from "../services/googleAuth.js"
-import { env } from "../config/env.js"
+import { env, cookieOptions } from "../config/env.js"
 
 const router = Router()
-
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "lax",
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-}
 
 function setAuthCookies(res, userId, tokenVersion = 0) {
   const accessToken = signAccessToken(userId, tokenVersion)
@@ -284,14 +278,35 @@ router.post("/google/link", requireAuth, async (req, res, next) => {
   }
 })
 
-router.post("/logout", (req, res) => {
-  const token = req.cookies?.accessToken || req.headers.authorization?.replace("Bearer ", "")
-  if (token) {
-    try {
-      const payload = verifyAccessToken(token)
+router.post("/logout", async (req, res) => {
+  try {
+    const token =
+      req.cookies?.accessToken ||
+      req.headers.authorization?.replace("Bearer ", "")
+    let userId = null
+
+    if (token) {
+      try {
+        const payload = verifyAccessToken(token)
+        if (payload?.sub) userId = payload.sub
+      } catch {}
+    }
+
+    if (!userId) {
+      const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken
+      if (refreshToken) {
+        try {
+          const refreshPayload = verifyRefreshToken(refreshToken)
+          if (refreshPayload?.sub) userId = refreshPayload.sub
+        } catch {}
+      }
+    }
+
+    if (userId) {
+      await User.findByIdAndUpdate(userId, { $inc: { tokenVersion: 1 } })
       const io = req.app.get("io")
-      if (io && payload?.sub) {
-        const userRoom = io.sockets.adapter.rooms.get(`user:${payload.sub}`)
+      if (io) {
+        const userRoom = io.sockets.adapter.rooms.get(`user:${userId.toString()}`)
         if (userRoom) {
           for (const socketId of Array.from(userRoom)) {
             const s = io.sockets.sockets.get(socketId)
@@ -299,7 +314,9 @@ router.post("/logout", (req, res) => {
           }
         }
       }
-    } catch {}
+    }
+  } catch (err) {
+    console.warn("Logout session invalidation notice:", err)
   }
   res.clearCookie("accessToken", cookieOptions)
   res.clearCookie("refreshToken", cookieOptions)

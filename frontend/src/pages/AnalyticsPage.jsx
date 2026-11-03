@@ -41,8 +41,12 @@ function CompletionChart({ values = [], labels = [] }) {
     );
   }
 
-  const max = Math.max(...values, 1);
+  const rawMax = Math.max(...values, 0);
+  const domainMax = rawMax <= 1 ? 2 : (rawMax % 2 === 0 ? rawMax : rawMax + 1);
+  const middleTick = domainMax / 2;
+  const isSingleBar = values.length === 1;
   const labelStep = Math.max(1, Math.ceil(labels.length / 7));
+
   return (
     <div
       className="analytics-completion-chart"
@@ -50,8 +54,8 @@ function CompletionChart({ values = [], labels = [] }) {
       aria-label="Completed tasks per date"
     >
       <div className="analytics-chart-scale">
-        <span>{max}</span>
-        <span>{Math.ceil(max / 2)}</span>
+        <span>{domainMax}</span>
+        <span>{middleTick}</span>
         <span>0</span>
       </div>
       <div className="analytics-chart-plot">
@@ -59,20 +63,23 @@ function CompletionChart({ values = [], labels = [] }) {
         <span className="analytics-chart-grid middle" />
         <span className="analytics-chart-grid bottom" />
         <div
-          className="analytics-chart-bars"
-          style={{ "--bar-count": values.length }}
+          className={`analytics-chart-bars ${isSingleBar ? "single-bar" : ""}`}
+          style={{
+            "--bar-count": isSingleBar ? 1 : values.length,
+            ...(isSingleBar ? { paddingInline: "max(32px, 35%)" } : {}),
+          }}
         >
           {values.map((value, index) => (
             <div className="analytics-chart-cell" key={labels[index] || index}>
               <span
                 className="analytics-chart-bar"
                 style={{
-                  height: value ? `${Math.max(4, (value / max) * 100)}%` : 0,
+                  height: value ? `${Math.max(4, (value / domainMax) * 100)}%` : 0,
                 }}
                 title={`${labels[index]}: ${value} completed`}
                 aria-label={`${labels[index]}: ${value} completed`}
               />
-              {index % labelStep === 0 && <small>{labels[index]}</small>}
+              {(index % labelStep === 0 || isSingleBar) && <small>{labels[index]}</small>}
             </div>
           ))}
         </div>

@@ -67,7 +67,7 @@ export default function TaskDrawer() {
     if (!task) return;
     updateTask.mutate({
       id: task.id,
-      payload: { ...updates, version: task.version },
+      payload: updates,
     });
   };
 

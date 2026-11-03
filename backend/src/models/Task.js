@@ -67,6 +67,8 @@ taskSchema.index({ organizationId: 1, projectId: 1, status: 1 })
 taskSchema.index({ organizationId: 1, projectId: 1, position: 1 })
 taskSchema.index({ organizationId: 1, updatedAt: -1 })
 taskSchema.index({ organizationId: 1, assigneeId: 1 })
+taskSchema.index({ organizationId: 1, status: 1 })
+taskSchema.index({ organizationId: 1, dueDate: 1 })
 
 export const Task = mongoose.model("Task", taskSchema)
 

@@ -48,7 +48,7 @@ export function useSocket() {
 
     const socketUrl =
       import.meta.env.VITE_SOCKET_URL ||
-      (import.meta.env.DEV ? "http://localhost:5000" : window.location.origin)
+      (import.meta.env.DEV ? "http://localhost:5000" : "https://workflow-backend-bay.vercel.app")
 
     const authToken = getAuthToken()
     const socket = getOrCreateSocket(socketUrl, organizationId, authToken)

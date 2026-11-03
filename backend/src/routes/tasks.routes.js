@@ -719,20 +719,21 @@ const handleTaskUpdate = async (req, res, next) => {
       queryCondition.assigneeId = req.user._id
     }
 
+    const setFields = {}
+    if (req.body.title !== undefined) setFields.title = task.title
+    if (req.body.description !== undefined) setFields.description = task.description
+    if (req.body.status !== undefined) setFields.status = task.status
+    if (req.body.priority !== undefined) setFields.priority = task.priority
+    if (req.body.label !== undefined) setFields.label = task.label
+    if (req.body.checklist !== undefined) setFields.checklist = task.checklist
+    if (req.body.dueDate !== undefined || req.body.due !== undefined) setFields.dueDate = task.dueDate
+    if (hasAssigneeUpdate) setFields.assigneeId = task.assigneeId
+    if (req.body.projectId || req.body.project) setFields.projectId = task.projectId
+
     const updated = await Task.findOneAndUpdate(
       queryCondition,
       {
-        $set: {
-          title: task.title,
-          description: task.description,
-          status: task.status,
-          priority: task.priority,
-          label: task.label,
-          checklist: task.checklist,
-          dueDate: task.dueDate,
-          assigneeId: task.assigneeId,
-          projectId: task.projectId,
-        },
+        $set: setFields,
         $inc: { version: 1 },
       },
       { new: true },
@@ -850,7 +851,7 @@ const handleTaskUpdate = async (req, res, next) => {
         entityId: task._id,
       })
     }
-    res.json(await fullTaskPayload(task, project))
+    res.json(await fullTaskPayload(updated, project))
   } catch (error) {
     next(error)
   }

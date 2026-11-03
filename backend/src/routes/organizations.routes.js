@@ -14,14 +14,9 @@ import { requireAuth, requireOrganization, requireRole } from "../middleware/aut
 import { slugify } from "../utils/helpers.js"
 import { serializeMember } from "../services/serializers.js"
 import { createNotification, emitOrgEvent } from "../services/notify.js"
+import { cookieOptions } from "../config/env.js"
 
 const router = Router()
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "lax",
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-}
 
 router.use(requireAuth)
 

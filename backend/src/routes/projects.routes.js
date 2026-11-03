@@ -96,7 +96,8 @@ router.get("/", async (req, res, next) => {
 
 router.post("/", requireRole("Owner", "Admin", "Manager", "Member"), async (req, res, next) => {
   try {
-    const { name, description, status, dueDate } = req.body
+    const { name, description, status } = req.body
+    const rawDue = req.body.dueDate !== undefined ? req.body.dueDate : req.body.due
     if (!name?.trim()) return res.status(422).json({ message: "Name is required" })
     let slug = slugify(name)
     if (
@@ -113,7 +114,7 @@ router.post("/", requireRole("Owner", "Admin", "Manager", "Member"), async (req,
       slug,
       description: description || "",
       status: status || "Planning",
-      dueDate: dueDate ? new Date(dueDate) : undefined,
+      dueDate: rawDue ? new Date(rawDue) : undefined,
       memberIds: [req.user._id],
     })
     await Activity.create({
@@ -153,15 +154,16 @@ router.patch("/:projectId", requireRole("Owner", "Admin", "Manager"), async (req
       findProjectQuery(req.organization._id, req.params.projectId),
     )
     if (!project) return res.status(404).json({ message: "Project not found" })
-    const { name, description, status, dueDate, archived } = req.body
+    const { name, description, status, archived } = req.body
+    const rawDue = req.body.dueDate !== undefined ? req.body.dueDate : req.body.due
     if (name) {
       project.name = name.trim()
       project.slug = slugify(name)
     }
     if (description !== undefined) project.description = description
     if (status) project.status = status
-    if (dueDate !== undefined) {
-      project.dueDate = dueDate ? new Date(dueDate) : undefined
+    if (rawDue !== undefined) {
+      project.dueDate = rawDue ? new Date(rawDue) : undefined
     }
     if (archived !== undefined) project.archived = archived
     await project.save()

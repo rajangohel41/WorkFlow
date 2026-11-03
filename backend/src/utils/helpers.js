@@ -30,10 +30,13 @@ export function colorForId(id) {
 
 export function formatDue(date) {
   if (!date) return "Not set"
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return "Not set"
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
-  }).format(new Date(date))
+    timeZone: "UTC",
+  }).format(d)
 }
 
 export function formatRelative(date) {

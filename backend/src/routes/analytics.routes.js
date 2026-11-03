@@ -56,30 +56,41 @@ router.get("/dashboard", async (req, res, next) => {
   try {
     const orgId = req.organization._id
     const { start, end, previousStart, previousEnd } = rangeWindow(req.query.range)
-    const activeMembers = await OrganizationMember.find({
-      organizationId: orgId,
-      status: "Active",
-    }).select("userId").lean()
-    const memberIds = activeMembers.map((member) => member.userId)
-    const [projects, openTasks, scheduledTasks, completedTasks, previousCompletedTasks, members, activities, workloads] = await Promise.all([
+
+    const [
+      activeMembers,
+      projects,
+      openTasks,
+      scheduledTasks,
+      completedTasks,
+      previousCompletedTasks,
+      activities,
+    ] = await Promise.all([
+      OrganizationMember.find({
+        organizationId: orgId,
+        status: "Active",
+      }).select("userId").lean(),
       Project.countDocuments({ organizationId: orgId, archived: false }),
       Task.countDocuments({ organizationId: orgId, status: { $ne: "Done" } }),
       Task.countDocuments({ organizationId: orgId, dueDate: { $exists: true, $ne: null } }),
       Activity.countDocuments({ organizationId: orgId, text: "moved task to", target: "Done", createdAt: { $gte: start, $lte: end } }),
       Activity.countDocuments({ organizationId: orgId, text: "moved task to", target: "Done", createdAt: { $gte: previousStart, $lte: previousEnd } }),
-      OrganizationMember.countDocuments({
-        organizationId: orgId,
-        status: "Active",
-      }),
       Activity.find({ organizationId: orgId }).sort({ createdAt: -1 }).limit(10).lean(),
+    ])
+
+    const memberIds = activeMembers.map((member) => member.userId)
+    const membersCount = activeMembers.length
+
+    const [workloads, actors] = await Promise.all([
       memberIds.length ? Task.aggregate([
         { $match: { organizationId: orgId, assigneeId: { $in: memberIds } } },
         { $group: { _id: "$assigneeId", assigned: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ["$status", "Done"] }, 1, 0] } } } },
       ]) : Promise.resolve([]),
+      User.find({
+        _id: { $in: activities.map((a) => a.actorId).filter(Boolean) },
+      }).select("name email avatarUrl").lean(),
     ])
-    const actors = await User.find({
-      _id: { $in: activities.map((a) => a.actorId).filter(Boolean) },
-    }).select("name email avatarUrl").lean()
+
     const actorMap = Object.fromEntries(
       actors.map((u) => [u._id.toString(), u]),
     )
@@ -90,7 +101,7 @@ router.get("/dashboard", async (req, res, next) => {
         scheduledTasks,
         completedTasks,
         previousCompletedTasks,
-        teamMembers: members,
+        teamMembers: membersCount,
       },
       activity: activities.map((a) =>
         serializeActivity(a, actorMap[a.actorId?.toString()]),

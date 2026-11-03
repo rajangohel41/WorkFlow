@@ -23,6 +23,8 @@ const suites = [
   "vercel_runtime_verification.test.js",
   "password_recovery.test.js",
   "google_auth.test.js",
+  "auth_logout_persistence.test.js",
+  "qa_pass_regression.test.js",
 ]
 
 

@@ -25,7 +25,8 @@ import {
 } from "../../hooks/useWorkflowQueries.js";
 import { authService } from "../../services/authService.js";
 import { disconnectSocket } from "../../hooks/useSocket.js";
-import { setAuthToken, setOrganizationId } from "../../api/client.js";
+import { setAuthToken, setOrganizationId, notifyLogout } from "../../api/client.js";
+import { queryKeys } from "../../hooks/queryKeys.js";
 import { useAppStore } from "../../store/useAppStore.js";
 import { Avatar, Button, Field, IconButton, Modal } from "../ui/index.jsx";
 
@@ -381,11 +382,13 @@ export function CreateModal() {
     setLoading(true);
     try {
       if (type === "project") {
+        const rawDue = data.due || data.dueDate || undefined;
         const created = await createProject.mutateAsync({
           name: data.name,
           description: data.description || "A new collaborative project.",
           status: data.status || "Planning",
-          due: data.due || undefined,
+          dueDate: rawDue,
+          due: rawDue,
         });
         setCreateModal(null);
         if (created?.id) navigate(`/projects/${created.id}`);
@@ -450,6 +453,17 @@ export function CreateModal() {
                 className="input"
                 type="email"
                 placeholder="name@company.com"
+                onChange={(event) => {
+                  if (event.target.value.trim() && error) {
+                    const errLower = error.toLowerCase();
+                    if (
+                      errLower.includes("email") ||
+                      errLower.includes("required")
+                    ) {
+                      setError("");
+                    }
+                  }
+                }}
                 required
               />
             </Field>
@@ -477,6 +491,17 @@ export function CreateModal() {
               name="name"
               className="input"
               placeholder="Startup Team"
+              onChange={(event) => {
+                if (event.target.value.trim() && error) {
+                  const errLower = error.toLowerCase();
+                  if (
+                    errLower.includes("name") ||
+                    errLower.includes("required")
+                  ) {
+                    setError("");
+                  }
+                }
+              }}
               required
             />
           </Field>
@@ -522,6 +547,18 @@ export function CreateModal() {
                     ? "Update onboarding flow"
                     : "Website Redesign"
                 }
+                onChange={(event) => {
+                  if (event.target.value.trim() && error) {
+                    const errLower = error.toLowerCase();
+                    if (
+                      errLower.includes("name") ||
+                      errLower.includes("title") ||
+                      errLower.includes("required")
+                    ) {
+                      setError("");
+                    }
+                  }
+                }}
                 required
               />
             </Field>
@@ -663,17 +700,19 @@ export function UserMenu() {
 
   const handleLogout = async () => {
     setOpen(false);
+    notifyLogout();
+    disconnectSocket();
+    setAuthToken(null);
+    setOrganizationId(null);
+    clearAuth();
+    queryClient.setQueryData(queryKeys.me, null);
+    await queryClient.cancelQueries();
+    queryClient.clear();
     try {
       await authService.logout();
     } catch (error) {
       console.warn("Server logout failed; clearing the local session.", error);
     } finally {
-      disconnectSocket();
-      setAuthToken(null);
-      setOrganizationId(null);
-      await queryClient.cancelQueries();
-      queryClient.clear();
-      clearAuth();
       navigate("/login", { replace: true });
     }
   };

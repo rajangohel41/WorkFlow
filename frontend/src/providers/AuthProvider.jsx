@@ -94,7 +94,13 @@ export function ProtectedRoute() {
 
 export function GuestRoute() {
   const { data, isLoading } = useMe();
-  if (isLoading) return null;
+  if (isLoading) {
+    return (
+      <div className="auth-loading">
+        <p>Loading…</p>
+      </div>
+    );
+  }
   if (data?.user) {
     if (!data.organizations?.length) {
       return <Navigate to="/onboarding" replace />;

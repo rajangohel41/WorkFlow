@@ -46,6 +46,7 @@ const memberSchema = new mongoose.Schema(
 )
 
 memberSchema.index({ organizationId: 1, userId: 1 }, { unique: true })
+memberSchema.index({ organizationId: 1, status: 1 })
 
 export const OrganizationMember = mongoose.model(
   "OrganizationMember",

@@ -6,8 +6,10 @@ import {
   Plus,
   UsersRound,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { getGreeting } from "../../utils/greeting.js";
+export { getGreeting };
 import { useAppStore } from "../../store/useAppStore.js";
 import {
   useDashboardStats,
@@ -46,7 +48,10 @@ function CompletionChart({
         <span>Complete a task to start seeing delivery trends.</span>
       </div>
     );
-  const max = Math.max(...dataPoints);
+  const rawMax = Math.max(...dataPoints, 0);
+  const domainMax = rawMax <= 1 ? 2 : (rawMax % 2 === 0 ? rawMax : rawMax + 1);
+  const middleTick = domainMax / 2;
+  const isSingleBar = dataPoints.length === 1;
   const labelStep = Math.max(1, Math.ceil(labels.length / 6));
   return (
     <div
@@ -55,8 +60,8 @@ function CompletionChart({
       aria-label="Completed task counts per date"
     >
       <div className="completion-scale">
-        <span>{max}</span>
-        <span>{Math.ceil(max / 2)}</span>
+        <span>{domainMax}</span>
+        <span>{middleTick}</span>
         <span>0</span>
       </div>
       <div className="completion-plot">
@@ -64,20 +69,23 @@ function CompletionChart({
         <div className="completion-grid-line middle" />
         <div className="completion-grid-line bottom" />
         <div
-          className="completion-bars"
-          style={{ "--bar-count": dataPoints.length }}
+          className={`completion-bars ${isSingleBar ? "single-bar" : ""}`}
+          style={{
+            "--bar-count": isSingleBar ? 1 : dataPoints.length,
+            ...(isSingleBar ? { paddingInline: "max(32px, 35%)" } : {}),
+          }}
         >
           {dataPoints.map((value, index) => (
             <div className="completion-bar-cell" key={labels[index] || index}>
               <span
                 className="completion-bar"
                 style={{
-                  height: `${value ? Math.max(4, (value / max) * 100) : 0}%`,
+                  height: `${value ? Math.max(4, (value / domainMax) * 100) : 0}%`,
                 }}
                 title={`${labels[index] || "Date"}: ${value} completed`}
                 aria-label={`${labels[index] || "Date"}: ${value} completed`}
               />
-              {index % labelStep === 0 && <small>{labels[index]}</small>}
+              {(index % labelStep === 0 || isSingleBar) && <small>{labels[index]}</small>}
             </div>
           ))}
         </div>
@@ -88,7 +96,28 @@ function CompletionChart({
 
 export default function DashboardPage() {
   const [range, setRange] = useState("Last 30 days");
+  const [greeting, setGreeting] = useState(() => getGreeting());
   const user = useAppStore((state) => state.user);
+
+  useEffect(() => {
+    const updateGreeting = () => {
+      setGreeting(getGreeting());
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        updateGreeting();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", updateGreeting);
+    const interval = setInterval(updateGreeting, 60_000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", updateGreeting);
+      clearInterval(interval);
+    };
+  }, []);
 
   const {
     data: dashboardData,
@@ -96,8 +125,8 @@ export default function DashboardPage() {
     isError: dashboardError,
     refetch: refetchDashboard,
   } = useDashboardStats(range);
-  const { data: projectsData } = useProjects();
-  const { data: membersData } = useMembers();
+  const { data: projectsData, isError: projectsError } = useProjects();
+  const { data: membersData, isError: membersError } = useMembers();
   const {
     data: analyticsData,
     isLoading: analyticsLoading,
@@ -109,13 +138,29 @@ export default function DashboardPage() {
   const members = membersData?.members || [];
   const activity = dashboardData?.activity || [];
 
+  const activeProjectsCount = projectsData
+    ? projects.filter((p) => !p.archived).length
+    : dashboardData?.stats?.activeProjects;
+  const activeProjectsLoading = !projectsData && dashboardLoading;
+
+  const teamMembersCount = membersData
+    ? members.length
+    : dashboardData?.stats?.teamMembers;
+  const teamMembersLoading = !membersData && dashboardLoading;
+
+  const openTasksCount = dashboardData?.stats?.openTasks;
+  const openTasksLoading = dashboardLoading && !dashboardData;
+
+  const completedTasksCount = dashboardData?.stats?.completedTasks;
+  const completedTasksLoading = dashboardLoading && !dashboardData;
+
   const stats = dashboardData?.stats || {
-    activeProjects: projects.filter((p) => !p.archived).length,
-    openTasks: 0,
+    activeProjects: activeProjectsCount ?? 0,
+    openTasks: openTasksCount ?? 0,
     scheduledTasks: 0,
-    completedTasks: 0,
+    completedTasks: completedTasksCount ?? 0,
     previousCompletedTasks: 0,
-    teamMembers: members.length,
+    teamMembers: teamMembersCount ?? 0,
   };
   const completionChange =
     stats.previousCompletedTasks > 0
@@ -129,32 +174,40 @@ export default function DashboardPage() {
   const displayKpis = [
     {
       label: "Active Projects",
-      value: stats.activeProjects,
-      metric: `${stats.activeProjects} active project${stats.activeProjects === 1 ? "" : "s"}`,
+      value: activeProjectsCount,
+      metric: `${activeProjectsCount ?? 0} active project${activeProjectsCount === 1 ? "" : "s"}`,
       icon: BriefcaseBusiness,
       tone: "indigo",
+      loading: activeProjectsLoading,
+      error: !projectsData && (dashboardError || projectsError),
     },
     {
       label: "Open Tasks",
-      value: stats.openTasks,
+      value: openTasksCount,
       metric: `${stats.scheduledTasks || 0} scheduled`,
       icon: Clock3,
       tone: "blue",
+      loading: openTasksLoading,
+      error: !dashboardData && dashboardError,
     },
     {
       label: "Completed",
-      value: stats.completedTasks,
-      metric: `${stats.completedTasks} completed in period`,
+      value: completedTasksCount,
+      metric: `${completedTasksCount ?? 0} completed in period`,
       icon: CheckCircle2,
       tone: "green",
       trend: completionChange,
+      loading: completedTasksLoading,
+      error: !dashboardData && dashboardError,
     },
     {
       label: "Team Members",
-      value: stats.teamMembers,
-      metric: `${members.filter((m) => m.status === "Online").length || members.length} active`,
+      value: teamMembersCount,
+      metric: `${members.filter((m) => m.status === "Online").length || teamMembersCount || 0} active`,
       icon: UsersRound,
       tone: "amber",
+      loading: teamMembersLoading,
+      error: !membersData && (dashboardError || membersError),
     },
   ];
 
@@ -163,7 +216,7 @@ export default function DashboardPage() {
   return (
     <div className="page dashboard-page">
       <PageHeader
-        title={`Good morning, ${firstName}`}
+        title={`${greeting}, ${firstName}`}
         subtitle="Here's what's happening across your workspace."
         actions={
           <>
@@ -191,7 +244,7 @@ export default function DashboardPage() {
       />
       <div className="kpi-grid">
         {displayKpis.map(
-          ({ label, value, metric, icon: Icon, tone, trend }) => (
+          ({ label, value, metric, icon: Icon, tone, trend, loading, error }) => (
             <Card className="kpi-card" key={label}>
               <div className="kpi-top">
                 <span className={`kpi-icon ${tone}`}>
@@ -200,8 +253,16 @@ export default function DashboardPage() {
               </div>
               <p>{label}</p>
               <div className="kpi-value">
-                <strong>{dashboardLoading ? "..." : value}</strong>
-                {trend !== undefined && (
+                <strong>
+                  {loading ? (
+                    <span className="kpi-loading-dots">…</span>
+                  ) : error ? (
+                    <span className="kpi-error-state" title="Failed to load metric">—</span>
+                  ) : (
+                    value ?? 0
+                  )}
+                </strong>
+                {trend !== undefined && !loading && !error && (
                   <span
                     className={
                       trend === null
@@ -222,7 +283,7 @@ export default function DashboardPage() {
                   </span>
                 )}
               </div>
-              <small>{metric}</small>
+              <small>{error ? "Unable to load data" : metric}</small>
             </Card>
           ),
         )}
